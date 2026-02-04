@@ -1,0 +1,40 @@
+export const config = {
+  FAL_KEY: process.env.FAL_KEY,
+  RAPIDAPI_KEY: process.env.RAPIDAPI_KEY,
+  LATE_API_KEY: process.env.LATE_API_KEY,
+  LATE_API_URL: 'https://getlate.dev/api/v1',
+  TIKTOK_ACCOUNT_ID: process.env.TIKTOK_ACCOUNT_ID,
+  DATABASE_URL: process.env.DATABASE_URL,
+  GCS_BUCKET_NAME: process.env.GCS_BUCKET_NAME || 'runable-ai-ugc',
+  defaultMaxSeconds: parseInt(process.env.MAX_VIDEO_SECONDS || '10', 10),
+  defaultTimezone: process.env.DEFAULT_TIMEZONE || 'Asia/Kolkata',
+  prompt: `Replace the person in the input video with the person from the provided reference image, preserving the exact facial identity from the image.
+
+The final video must retain the original video's motion, timing, camera movement, lighting behavior, and background realism. The subject should move naturally and remain perfectly aligned with the original body motion, pose, and gestures from the video.
+
+Facial identity transfer only:
+Use the reference image strictly for facial structure, skin texture, proportions, and identity. Do not stylize, beautify, or alter the face. No face reshaping, no AI smoothing, no plastic skin.
+
+The replaced subject must appear fully integrated into the scene — correct scale, correct head position, realistic shadows, consistent lighting, and natural motion blur. Skin texture must remain realistic with visible pores and natural imperfections.
+
+Maintain photorealism at all times. The result must look like a real person recorded on a smartphone, not an AI-generated video.
+
+Preserve the original clothing from the video exactly, including fabric behavior, folds, and movement.
+
+Preserve the original video background, environment, lighting, and depth exactly.`,
+};
+
+export type Job = {
+  id: string;
+  tiktokUrl: string;
+  imageUrl: string;
+  imageName?: string; // For backwards compatibility
+  customPrompt?: string;
+  maxSeconds: number;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  step: string;
+  outputUrl?: string;
+  error?: string;
+  createdAt: string;
+  completedAt?: string;
+};
