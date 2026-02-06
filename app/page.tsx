@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { uploadVideoDirectToGcs } from '@/lib/gcsResumableUpload';
 
 type Job = {
   id: string;
@@ -84,11 +85,13 @@ export default function Home() {
   const [uploadedImageName, setUploadedImageName] = useState<string | null>(null);
   const [uploadedImagePath, setUploadedImagePath] = useState<string | null>(null);
   const [uploadedVideoPath, setUploadedVideoPath] = useState<string | null>(null);
+  const [uploadedVideoPreviewUrl, setUploadedVideoPreviewUrl] = useState<string | null>(null);
   const [tiktokUrl, setTiktokUrl] = useState('');
   const [videoSource, setVideoSource] = useState<'tiktok' | 'upload'>('tiktok');
   const [uploadedSourceVideo, setUploadedSourceVideo] = useState<string | null>(null);
   const [uploadedSourceVideoName, setUploadedSourceVideoName] = useState<string | null>(null);
   const [isUploadingSourceVideo, setIsUploadingSourceVideo] = useState(false);
+  const [sourceVideoUploadProgress, setSourceVideoUploadProgress] = useState<number>(0);
   const [maxSeconds, setMaxSeconds] = useState(10);
   const [generateDisabled, setGenerateDisabled] = useState(true);
   const [pollingInterval, setPollingInterval] = useState<ReturnType<typeof setInterval> | null>(null);
@@ -102,6 +105,7 @@ export default function Home() {
   const [postForm, setPostForm] = useState({ caption: '', videoUrl: '', accountId: '', date: '', time: '' });
   const [isPosting, setIsPosting] = useState(false);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [postVideoUploadProgress, setPostVideoUploadProgress] = useState<number>(0);
   const [uploadedVideoName, setUploadedVideoName] = useState<string | null>(null);
   const [newProfileForm, setNewProfileForm] = useState({ name: '', description: '', color: '#fcd34d' });
   const [editProfileForm, setEditProfileForm] = useState({ name: '', description: '', color: '#fcd34d' });
@@ -449,22 +453,26 @@ export default function Home() {
     const file = e.target.files?.[0];
     if (!file) return;
     setIsUploadingSourceVideo(true);
-    const formData = new FormData();
-    formData.append('video', file);
+    setSourceVideoUploadProgress(0);
     try {
-      const res = await fetch('/api/upload-video', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (res.ok && data.gcsUrl) {
+      const data = await uploadVideoDirectToGcs(file, {
+        onProgress: (uploadedBytes, totalBytes) => {
+          const progress = totalBytes === 0 ? 0 : Math.round((uploadedBytes / totalBytes) * 100);
+          setSourceVideoUploadProgress(progress);
+        },
+      });
+      if (data.gcsUrl) {
         setUploadedSourceVideo(data.gcsUrl);
         setUploadedSourceVideoName(file.name);
         showToast('Video uploaded!', 'success');
       } else {
-        showToast(data.error || 'Upload failed', 'error');
+        showToast('Upload failed', 'error');
       }
     } catch (err) {
-      showToast('Upload error', 'error');
+      showToast((err as Error).message || 'Upload error', 'error');
     } finally {
       setIsUploadingSourceVideo(false);
+      setSourceVideoUploadProgress(0);
       e.target.value = '';
     }
   };
@@ -532,6 +540,7 @@ export default function Home() {
       time: prev.time || '',
     }));
     setUploadedVideoPath(null);
+    setUploadedVideoPreviewUrl(null);
     setPreselectedVideoPath(null);
     setUploadedVideoName(null);
     setPublishMode('now');
@@ -611,27 +620,31 @@ export default function Home() {
 
     setIsUploadingVideo(true);
     setUploadedVideoName(file.name);
-
-    const formData = new FormData();
-    formData.append('video', file);
+    setPostVideoUploadProgress(0);
     try {
-      const res = await fetch('/api/upload-video', { method: 'POST', body: formData });
-      const data = await res.json();
+      const data = await uploadVideoDirectToGcs(file, {
+        onProgress: (uploadedBytes, totalBytes) => {
+          const progress = totalBytes === 0 ? 0 : Math.round((uploadedBytes / totalBytes) * 100);
+          setPostVideoUploadProgress(progress);
+        },
+      });
       if (data.success) {
-        const videoUrl = data.url || data.path;
-        setUploadedVideoPath(videoUrl);
+        setUploadedVideoPath(data.gcsUrl);
+        setUploadedVideoPreviewUrl(data.url || data.gcsUrl);
         // Clear dropdown selection since we're using uploaded video
         setPostForm((p) => ({ ...p, videoUrl: '' }));
         showToast('Video uploaded successfully!', 'success');
       } else {
         setUploadedVideoName(null);
-        showToast(data.error || 'Upload failed', 'error');
+        showToast('Upload failed', 'error');
       }
     } catch (err) {
       setUploadedVideoName(null);
-      showToast('Upload failed', 'error');
+      showToast((err as Error).message || 'Upload failed', 'error');
     } finally {
       setIsUploadingVideo(false);
+      setPostVideoUploadProgress(0);
+      e.target.value = '';
     }
   };
 
@@ -777,7 +790,9 @@ export default function Home() {
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                             </svg>
-                            <span className="mt-2 text-sm font-medium text-[var(--primary)]">Uploading...</span>
+                            <span className="mt-2 text-sm font-medium text-[var(--primary)]">
+                              Uploading... {sourceVideoUploadProgress}%
+                            </span>
                           </>
                         ) : uploadedSourceVideo ? (
                           <div className="flex flex-col items-center">
@@ -1875,6 +1890,7 @@ export default function Home() {
                       <button
                         onClick={() => {
                           setUploadedVideoPath(null);
+                          setUploadedVideoPreviewUrl(null);
                           setUploadedVideoName(null);
                         }}
                         className="rounded p-1 text-[var(--text-muted)] hover:bg-[var(--background)] hover:text-[var(--error)]"
@@ -1887,7 +1903,7 @@ export default function Home() {
                     </div>
                     <div className="bg-black">
                       <video
-                        src={uploadedVideoPath}
+                        src={uploadedVideoPreviewUrl || uploadedVideoPath}
                         controls
                         className="mx-auto max-h-48 w-full object-contain"
                       />
@@ -1938,8 +1954,10 @@ export default function Home() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
-                        <span className="mt-2 text-sm font-medium text-[var(--primary)]">Uploading {uploadedVideoName}...</span>
-                        <span className="text-xs text-[var(--text-muted)]">Please wait</span>
+                        <span className="mt-2 text-sm font-medium text-[var(--primary)]">
+                          Uploading {uploadedVideoName}... {postVideoUploadProgress}%
+                        </span>
+                        <span className="text-xs text-[var(--text-muted)]">Large files upload in chunks directly to storage</span>
                       </>
                     ) : (
                       <>
