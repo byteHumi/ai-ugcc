@@ -11,7 +11,7 @@ import {
   getVideoDuration,
   trimVideo,
   downloadFile,
-} from './utils';
+} from './serverUtils';
 import { rapidApiLimiter } from './rateLimiter';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
