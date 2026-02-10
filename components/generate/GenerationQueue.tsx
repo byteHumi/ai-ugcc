@@ -62,7 +62,7 @@ export default function GenerationQueue() {
                 </button>
                 <button
                   onClick={() => {
-                    router.push('/posts?createPost=true&videoUrl=' + encodeURIComponent(job.outputUrl!));
+                    router.push('/posts?createPost=true&videoUrl=' + encodeURIComponent(job.signedUrl || job.outputUrl!));
                   }}
                   className="rounded border border-[var(--accent-border)] bg-[var(--accent)] px-2 py-0.5 text-[10px] font-medium hover:bg-[#fde68a]"
                 >

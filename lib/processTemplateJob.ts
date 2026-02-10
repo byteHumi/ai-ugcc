@@ -186,11 +186,10 @@ async function processStep(
           input: {
             image_url: falImageUrl,
             prompt: cfg.prompt || config.veoPrompt,
-            aspect_ratio: cfg.aspectRatio || veo.aspectRatio,
-            duration: cfg.duration || veo.duration,
-            resolution: cfg.resolution || veo.resolution,
+            aspect_ratio: (cfg.aspectRatio || veo.aspectRatio) as '9:16' | '16:9' | 'auto',
+            duration: (cfg.duration || veo.duration) as '4s' | '6s' | '8s',
+            resolution: (cfg.resolution || veo.resolution) as '720p' | '1080p',
             generate_audio: cfg.generateAudio ?? veo.generateAudio,
-            negative_prompt: cfg.negativePrompt || veo.negativePrompt,
           },
           logs: true,
           onQueueUpdate: (update) => {

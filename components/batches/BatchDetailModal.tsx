@@ -122,7 +122,7 @@ export default function BatchDetailModal({
                         <button
                           onClick={() => {
                             onClose();
-                            router.push('/posts?createPost=true&videoUrl=' + encodeURIComponent(job.outputUrl!));
+                            router.push('/posts?createPost=true&videoUrl=' + encodeURIComponent(job.signedUrl || job.outputUrl!));
                           }}
                           className="rounded border border-[var(--accent-border)] bg-[var(--accent)] px-2 py-1 text-xs"
                         >

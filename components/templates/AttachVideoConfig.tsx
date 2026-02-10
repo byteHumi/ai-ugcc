@@ -39,6 +39,7 @@ export default function AttachVideoConfig({
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<VideoSource>(() => deriveSource(config));
+  const [isDragging, setIsDragging] = useState(false);
 
   // Steps that appear before the current step
   const previousSteps = (steps && currentStepId)
@@ -53,9 +54,7 @@ export default function AttachVideoConfig({
     ...(hasPipelineOption ? [{ key: 'pipeline' as VideoSource, label: 'From Pipeline' }] : []),
   ];
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFile = async (file: File) => {
     try {
       const result = await uploadVideo(file);
       if (result) {
@@ -65,6 +64,11 @@ export default function AttachVideoConfig({
     } catch (err) {
       console.error('Upload attach video error:', err);
     }
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
   };
 
   const handleSourceChange = (src: VideoSource) => {
@@ -158,10 +162,20 @@ export default function AttachVideoConfig({
               </div>
             </div>
           ) : (
-            <button
+            <div
               onClick={() => fileRef.current?.click()}
-              disabled={isUploading}
-              className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--border)] bg-[var(--background)] py-6 transition-colors hover:border-[var(--accent-border)] hover:bg-[var(--accent)]"
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault(); setIsDragging(false);
+                const file = e.dataTransfer.files[0];
+                if (file?.type.startsWith('video/')) handleFile(file);
+              }}
+              className={`flex w-full cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed py-6 transition-colors ${
+                isDragging
+                  ? 'border-[var(--primary)] bg-[var(--primary)]/5'
+                  : 'border-[var(--border)] bg-[var(--background)] hover:border-[var(--accent-border)] hover:bg-[var(--accent)]'
+              } ${isUploading ? 'pointer-events-none' : ''}`}
             >
               {isUploading ? (
                 <>
@@ -173,10 +187,12 @@ export default function AttachVideoConfig({
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent)]">
                     <Upload className="h-4 w-4 text-[var(--text-muted)]" />
                   </div>
-                  <span className="text-xs text-[var(--text-muted)]">Click to upload video clip</span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    {isDragging ? 'Drop video here' : 'Click or drag video here'}
+                  </span>
                 </>
               )}
-            </button>
+            </div>
           )}
         </div>
       )}

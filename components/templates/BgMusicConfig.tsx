@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Upload, Music } from 'lucide-react';
 import { useMusicTracks } from '@/hooks/useMusicTracks';
 import type { BgMusicConfig as BMC } from '@/types';
@@ -13,15 +13,19 @@ export default function BgMusicConfig({
 }) {
   const { tracks, uploadTrack } = useMusicTracks();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFile = async (file: File) => {
     try {
       await uploadTrack(file, file.name.replace(/\.\w+$/, ''));
     } catch (err) {
       console.error('Upload track error:', err);
     }
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
   };
 
   return (
@@ -66,13 +70,24 @@ export default function BgMusicConfig({
       {/* Upload */}
       <div>
         <input ref={fileRef} type="file" accept="audio/*" onChange={handleUpload} className="hidden" />
-        <button
+        <div
           onClick={() => fileRef.current?.click()}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--border)] py-2.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:border-[var(--accent-border)] hover:text-[var(--text)]"
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault(); setIsDragging(false);
+            const file = e.dataTransfer.files[0];
+            if (file?.type.startsWith('audio/')) handleFile(file);
+          }}
+          className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed py-2.5 text-xs font-medium transition-colors ${
+            isDragging
+              ? 'border-[var(--primary)] bg-[var(--primary)]/5 text-[var(--text)]'
+              : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent-border)] hover:text-[var(--text)]'
+          }`}
         >
           <Upload className="h-3.5 w-3.5" />
-          Upload Custom Track
-        </button>
+          {isDragging ? 'Drop audio here' : 'Click or drag audio file'}
+        </div>
       </div>
 
       {/* Volume */}

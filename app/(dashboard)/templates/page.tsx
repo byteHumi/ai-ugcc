@@ -105,10 +105,7 @@ export default function TemplatesPage() {
     window.addEventListener('mouseup', onUp);
   }, [panelWidth]);
 
-  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const handleVideoFile = useCallback(async (file: File) => {
     // Detect video duration from the file
     const objectUrl = URL.createObjectURL(file);
     const vid = document.createElement('video');
@@ -131,6 +128,11 @@ export default function TemplatesPage() {
     } catch {
       showToast('Failed to upload video', 'error');
     }
+  }, [uploadVideo, showToast]);
+
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleVideoFile(file);
   };
 
   const handleUpdateStep = (id: string, updated: MiniAppStep) => {
@@ -339,6 +341,7 @@ export default function TemplatesPage() {
                   onTiktokUrlChange: setTiktokUrl,
                   onVideoUpload: (e) => handleVideoUpload(e),
                   onVideoRemove: () => { setVideoUrl(''); setUploadedFilename(''); setSourceDuration(undefined); },
+                  onFileDrop: handleVideoFile,
                 }}
                 videoUrl={videoSource === 'upload' ? videoUrl : undefined}
                 sourceDuration={sourceDuration}

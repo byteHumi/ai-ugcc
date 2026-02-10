@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { X, Video, Type, Music, Film, Upload } from 'lucide-react';
 import type { MiniAppStep, MiniAppType, VideoGenConfig as VGC, TextOverlayConfig as TOC, BgMusicConfig as BMC, AttachVideoConfig as AVC } from '@/types';
 import VideoGenConfig from './VideoGenConfig';
@@ -27,6 +27,7 @@ type SourceConfig = {
   onTiktokUrlChange: (url: string) => void;
   onVideoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onVideoRemove: () => void;
+  onFileDrop?: (file: File) => void;
 };
 
 export default function NodeConfigPanel({
@@ -42,6 +43,7 @@ export default function NodeConfigPanel({
   sourceDuration?: number;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const step = selectedId && selectedId !== 'source' ? steps.find((s) => s.id === selectedId) : null;
 
   /* ── Source node ── */
@@ -101,10 +103,20 @@ export default function NodeConfigPanel({
                   </div>
                 </div>
               ) : (
-                <button
+                <div
                   onClick={() => fileRef.current?.click()}
-                  disabled={sourceConfig.isUploading}
-                  className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--border)] bg-[var(--background)] py-6 transition-colors hover:border-[var(--accent-border)] hover:bg-[var(--accent)]"
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault(); setIsDragging(false);
+                    const file = e.dataTransfer.files[0];
+                    if (file?.type.startsWith('video/') && sourceConfig.onFileDrop) sourceConfig.onFileDrop(file);
+                  }}
+                  className={`flex w-full cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed py-6 transition-colors ${
+                    isDragging
+                      ? 'border-[var(--primary)] bg-[var(--primary)]/5'
+                      : 'border-[var(--border)] bg-[var(--background)] hover:border-[var(--accent-border)] hover:bg-[var(--accent)]'
+                  } ${sourceConfig.isUploading ? 'pointer-events-none' : ''}`}
                 >
                   {sourceConfig.isUploading ? (
                     <>
@@ -116,10 +128,12 @@ export default function NodeConfigPanel({
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)]">
                         <Upload className="h-3.5 w-3.5 text-[var(--text-muted)]" />
                       </div>
-                      <span className="text-xs text-[var(--text-muted)]">Click to upload video</span>
+                      <span className="text-xs text-[var(--text-muted)]">
+                        {isDragging ? 'Drop video here' : 'Click or drag video here'}
+                      </span>
                     </>
                   )}
-                </button>
+                </div>
               )}
             </div>
           )}
