@@ -3,6 +3,11 @@ import fs from 'fs'
 import https from 'https'
 import http from 'http'
 import path from 'path'
+import ffmpegPath from 'ffmpeg-static'
+import { path as ffprobePath } from 'ffprobe-static'
+
+const FFMPEG = ffmpegPath || 'ffmpeg'
+const FFPROBE = ffprobePath || 'ffprobe'
 
 /** Get MIME content type from a URL by inspecting its extension */
 export function getContentType(url: string): string {
@@ -39,7 +44,7 @@ export function getExtensionFromUrl(url: string): string {
 
 /** Get video duration in seconds using ffprobe */
 export function getVideoDuration(filePath: string): number {
-  const output = execFileSync('ffprobe', [
+  const output = execFileSync(FFPROBE, [
     '-v', 'error',
     '-show_entries', 'format=duration',
     '-of', 'default=noprint_wrappers=1:nokey=1',
@@ -50,7 +55,7 @@ export function getVideoDuration(filePath: string): number {
 
 /** Trim a video to maxSeconds using ffmpeg */
 export function trimVideo(inputPath: string, outputPath: string, maxSeconds: number): void {
-  execFileSync('ffmpeg', [
+  execFileSync(FFMPEG, [
     '-y',
     '-i', inputPath,
     '-t', String(maxSeconds),

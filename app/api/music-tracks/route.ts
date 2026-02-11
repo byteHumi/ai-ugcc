@@ -6,7 +6,9 @@ export async function GET() {
   try {
     await initDatabase();
     const tracks = await getAllMusicTracks();
-    return NextResponse.json(tracks);
+    return NextResponse.json(tracks, {
+      headers: { 'Cache-Control': 'private, max-age=30' },
+    });
   } catch (err) {
     console.error('List music tracks error:', err);
     return NextResponse.json({ error: 'Failed to list music tracks' }, { status: 500 });

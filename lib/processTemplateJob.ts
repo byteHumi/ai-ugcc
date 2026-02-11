@@ -371,6 +371,7 @@ export async function processTemplateJob(jobId: string): Promise<void> {
 
     // Process each enabled step, tracking outputs by step ID
     const stepOutputs = new Map<string, string>();
+    const stepResults: { stepId: string; type: string; label: string; outputUrl: string }[] = [];
 
     for (let i = 0; i < enabledSteps.length; i++) {
       const step = enabledSteps[i];
@@ -384,6 +385,20 @@ export async function processTemplateJob(jobId: string): Promise<void> {
       const newVideoPath = await processStep(step, currentVideoPath, jobId, i, stepOutputs);
       stepOutputs.set(step.id, newVideoPath);
 
+      // Upload intermediate result to GCS
+      const { url: stepUrl } = await uploadVideoFromPath(
+        newVideoPath,
+        `template-${jobId}-step-${i}.mp4`
+      );
+      stepResults.push({ stepId: step.id, type: step.type, label: stepLabel, outputUrl: stepUrl });
+
+      // Save progress with step results so far
+      await updateTemplateJob(jobId, {
+        currentStep: i + 1,
+        step: `Step ${i + 1}/${enabledSteps.length}: ${stepLabel} — done`,
+        stepResults,
+      });
+
       // Clean up previous temp file (but not the original input)
       if (currentVideoPath && i > 0) {
         try { fs.unlinkSync(currentVideoPath); } catch {}
@@ -393,14 +408,16 @@ export async function processTemplateJob(jobId: string): Promise<void> {
       tempFiles.push(newVideoPath);
     }
 
-    // Upload final result to GCS
-    await updateTemplateJob(jobId, { step: 'Uploading final video...' });
-    const { url } = await uploadVideoFromPath(currentVideoPath, `template-${jobId}.mp4`);
+    // Final result is same as last step result
+    const finalUrl = stepResults.length > 0
+      ? stepResults[stepResults.length - 1].outputUrl
+      : (await uploadVideoFromPath(currentVideoPath, `template-${jobId}.mp4`)).url;
 
     await updateTemplateJob(jobId, {
       status: 'completed',
       step: 'Done!',
-      outputUrl: url,
+      outputUrl: finalUrl,
+      stepResults,
       completedAt: new Date().toISOString(),
     });
   } catch (error) {

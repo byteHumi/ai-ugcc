@@ -32,7 +32,7 @@ type SourceConfig = {
 };
 
 export default function NodeConfigPanel({
-  selectedId, steps, onUpdateStep, onRemoveStep, onClose, sourceConfig, videoUrl, sourceDuration,
+  selectedId, steps, onUpdateStep, onRemoveStep, onClose, sourceConfig, videoUrl, sourceDuration, validationError,
 }: {
   selectedId: string | null;
   steps: MiniAppStep[];
@@ -42,6 +42,7 @@ export default function NodeConfigPanel({
   sourceConfig: SourceConfig;
   videoUrl?: string;
   sourceDuration?: number;
+  validationError?: string;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -169,6 +170,12 @@ export default function NodeConfigPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
+          {validationError && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+              {validationError}
+            </div>
+          )}
           {step.type === 'text-overlay' && (
             <TextOverlayPreview
               config={step.config as TOC}

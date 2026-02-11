@@ -133,6 +133,14 @@ export type MiniAppStep = {
   enabled: boolean;
 };
 
+export type StepResult = {
+  stepId: string;
+  type: MiniAppType;
+  label: string;
+  outputUrl: string;
+  signedUrl?: string;
+};
+
 export type TemplateJob = {
   id: string;
   name: string;
@@ -146,6 +154,7 @@ export type TemplateJob = {
   videoUrl?: string;
   outputUrl?: string;
   signedUrl?: string;
+  stepResults?: StepResult[];
   error?: string;
   createdAt: string;
   completedAt?: string;
@@ -155,6 +164,7 @@ export type MusicTrack = {
   id: string;
   name: string;
   gcsUrl: string;
+  signedUrl?: string;
   duration?: number;
   isDefault: boolean;
   createdAt: string;

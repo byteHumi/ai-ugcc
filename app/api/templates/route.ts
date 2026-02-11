@@ -13,7 +13,10 @@ export async function GET() {
     // Only sign completed jobs that have a GCS output URL.
     // Each signing has a 5s timeout to prevent the whole request from hanging.
     const jobsWithSignedUrls = await Promise.all(
-      jobs.map(async (job: { status?: string; outputUrl?: string; [key: string]: unknown }) => {
+      jobs.map(async (job: { status?: string; outputUrl?: string; stepResults?: { stepId: string; type: string; label: string; outputUrl: string; signedUrl?: string }[]; [key: string]: unknown }) => {
+        const result = { ...job };
+
+        // Sign final output URL
         if (
           job.status === 'completed' &&
           job.outputUrl &&
@@ -24,12 +27,33 @@ export async function GET() {
               getCachedSignedUrl(job.outputUrl),
               new Promise<string>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
             ]);
-            return { ...job, signedUrl };
+            result.signedUrl = signedUrl;
           } catch {
-            return { ...job, signedUrl: job.outputUrl };
+            result.signedUrl = job.outputUrl;
           }
         }
-        return job;
+
+        // Sign step result URLs
+        if (Array.isArray(job.stepResults) && job.stepResults.length > 0) {
+          result.stepResults = await Promise.all(
+            job.stepResults.map(async (sr) => {
+              if (sr.outputUrl?.includes('storage.googleapis.com')) {
+                try {
+                  const signed = await Promise.race([
+                    getCachedSignedUrl(sr.outputUrl),
+                    new Promise<string>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+                  ]);
+                  return { ...sr, signedUrl: signed };
+                } catch {
+                  return { ...sr, signedUrl: sr.outputUrl };
+                }
+              }
+              return sr;
+            })
+          );
+        }
+
+        return result;
       })
     );
 

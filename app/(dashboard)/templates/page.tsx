@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import Spinner from '@/components/ui/Spinner';
 import Modal from '@/components/ui/Modal';
-import type { MiniAppStep } from '@/types';
+import type { MiniAppStep, VideoGenConfig, TextOverlayConfig, BgMusicConfig, AttachVideoConfig } from '@/types';
 
 const DRAFT_KEY = 'ai-ugc-pipeline-draft';
 
@@ -55,6 +55,7 @@ export default function TemplatesPage() {
   const [sourceDuration, setSourceDuration] = useState<number | undefined>(() => draft.current?.sourceDuration);
   const [previewUrl, setPreviewUrl] = useState(() => draft.current?.previewUrl ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<Map<string, string>>(new Map());
 
   // Auto-save draft to sessionStorage on changes
   useEffect(() => {
@@ -202,6 +203,41 @@ export default function TemplatesPage() {
       }
     }
 
+    // Validate each enabled step has required fields
+    const errors = new Map<string, string>();
+    for (const s of enabledSteps) {
+      switch (s.type) {
+        case 'video-generation': {
+          const c = s.config as VideoGenConfig;
+          if (!c.imageId && !c.imageUrl) errors.set(s.id, 'Select a model image');
+          break;
+        }
+        case 'text-overlay': {
+          const c = s.config as TextOverlayConfig;
+          if (!c.text?.trim()) errors.set(s.id, 'Enter overlay text');
+          break;
+        }
+        case 'bg-music': {
+          const c = s.config as BgMusicConfig;
+          if (!c.trackId && !c.customTrackUrl) errors.set(s.id, 'Select a music track');
+          break;
+        }
+        case 'attach-video': {
+          const c = s.config as AttachVideoConfig;
+          if (!c.videoUrl && !c.sourceStepId && !c.tiktokUrl) errors.set(s.id, 'Add a video source');
+          break;
+        }
+      }
+    }
+    if (errors.size > 0) {
+      setValidationErrors(errors);
+      const first = errors.entries().next().value;
+      if (first) setSelectedNodeId(first[0]);
+      showToast(`${errors.size} step${errors.size > 1 ? 's' : ''} need${errors.size === 1 ? 's' : ''} configuration`, 'error');
+      return;
+    }
+    setValidationErrors(new Map());
+
     setIsSubmitting(true);
     try {
       const res = await fetch('/api/templates', {
@@ -298,6 +334,7 @@ export default function TemplatesPage() {
             videoSource={videoSource}
             tiktokUrl={tiktokUrl}
             videoUrl={videoUrl}
+            validationErrors={validationErrors}
           />
         </div>
 
@@ -335,9 +372,10 @@ export default function TemplatesPage() {
               <NodeConfigPanel
                 selectedId={selectedNodeId}
                 steps={steps}
-                onUpdateStep={handleUpdateStep}
+                onUpdateStep={(id, updated) => { handleUpdateStep(id, updated); setValidationErrors((prev) => { const next = new Map(prev); next.delete(id); return next; }); }}
                 onRemoveStep={handleRemoveStep}
                 onClose={() => { setSelectedNodeId(null); if (isMobile) setPanelOpen(false); }}
+                validationError={selectedNodeId && selectedNodeId !== 'source' ? validationErrors.get(selectedNodeId) : undefined}
                 sourceConfig={{
                   videoSource,
                   tiktokUrl,

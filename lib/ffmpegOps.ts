@@ -2,7 +2,12 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import ffmpegPath from 'ffmpeg-static';
+import { path as ffprobePath } from 'ffprobe-static';
 import type { TextOverlayConfig, BgMusicConfig } from '@/types';
+
+const FFMPEG = ffmpegPath || 'ffmpeg';
+const FFPROBE = ffprobePath || 'ffprobe';
 
 function getTempDir(): string {
   const dir = path.join(os.tmpdir(), 'ai-ugc-temp');
@@ -310,7 +315,7 @@ export function addTextOverlay(
   });
 
   try {
-    execFileSync('ffmpeg', [
+    execFileSync(FFMPEG, [
       '-y',
       '-i', inputPath,
       '-vf', filters.join(','),
@@ -340,7 +345,7 @@ export function mixAudio(
   // Get video duration for fade-out calculation
   let videoDuration = 0;
   try {
-    const output = execFileSync('ffprobe', [
+    const output = execFileSync(FFPROBE, [
       '-v', 'error',
       '-show_entries', 'format=duration',
       '-of', 'default=noprint_wrappers=1:nokey=1',
@@ -365,7 +370,7 @@ export function mixAudio(
   // Check if input video has audio
   let hasAudio = true;
   try {
-    const probeOut = execFileSync('ffprobe', [
+    const probeOut = execFileSync(FFPROBE, [
       '-v', 'error',
       '-select_streams', 'a',
       '-show_entries', 'stream=index',
@@ -378,7 +383,7 @@ export function mixAudio(
   }
 
   if (hasAudio) {
-    execFileSync('ffmpeg', [
+    execFileSync(FFMPEG, [
       '-y',
       '-i', inputPath,
       '-i', audioPath,
@@ -388,7 +393,7 @@ export function mixAudio(
     ]);
   } else {
     // No existing audio — just use the music track
-    execFileSync('ffmpeg', [
+    execFileSync(FFMPEG, [
       '-y',
       '-i', inputPath,
       '-i', audioPath,
@@ -411,7 +416,7 @@ export function concatVideos(videoPaths: string[], outputPath: string): void {
   let targetW = 720;
   let targetH = 1280;
   try {
-    const probe = execFileSync('ffprobe', [
+    const probe = execFileSync(FFPROBE, [
       '-v', 'error',
       '-select_streams', 'v:0',
       '-show_entries', 'stream=width,height',
@@ -434,7 +439,7 @@ export function concatVideos(videoPaths: string[], outputPath: string): void {
     // Check if this input has audio
     let hasAudio = false;
     try {
-      const audioProbe = execFileSync('ffprobe', [
+      const audioProbe = execFileSync(FFPROBE, [
         '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0',
         videoPaths[i],
       ], { encoding: 'utf-8' });
@@ -450,7 +455,16 @@ export function concatVideos(videoPaths: string[], outputPath: string): void {
     if (hasAudio) {
       filters.push(`[${i}:a]aformat=sample_rates=44100:channel_layouts=stereo[a${i}]`);
     } else {
-      filters.push(`anullsrc=r=44100:cl=stereo[a${i}]`);
+      // Probe duration to limit silent audio (anullsrc is infinite by default)
+      let dur = 10;
+      try {
+        const dOut = execFileSync(FFPROBE, [
+          '-v', 'error', '-show_entries', 'format=duration',
+          '-of', 'default=noprint_wrappers=1:nokey=1', videoPaths[i],
+        ], { encoding: 'utf-8' });
+        dur = parseFloat(dOut.trim()) || 10;
+      } catch {}
+      filters.push(`anullsrc=r=44100:cl=stereo,atrim=duration=${dur}[a${i}]`);
     }
 
     concatInputs.push(`[v${i}][a${i}]`);
@@ -458,7 +472,7 @@ export function concatVideos(videoPaths: string[], outputPath: string): void {
 
   filters.push(`${concatInputs.join('')}concat=n=${n}:v=1:a=1[vout][aout]`);
 
-  execFileSync('ffmpeg', [
+  execFileSync(FFMPEG, [
     '-y',
     ...inputs,
     '-filter_complex', filters.join(';'),
