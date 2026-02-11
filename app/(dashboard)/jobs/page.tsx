@@ -13,7 +13,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 function JobsPageInner() {
   const searchParams = useSearchParams();
   const { jobs, refresh: refreshJobs, refreshing: refreshingJobs } = useTemplates();
-  const { batches, refresh: refreshBatches, refreshing: refreshingBatches } = usePipelineBatches();
+  const { batches, loading: batchesLoading, refresh: refreshBatches, refreshing: refreshingBatches } = usePipelineBatches();
 
   const [tab, setTab] = useState<'single' | 'batch'>(() => {
     const param = searchParams.get('tab');
@@ -60,7 +60,10 @@ function JobsPageInner() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--primary)]">Jobs</h1>
           <p className="text-xs text-[var(--text-muted)]">
-            {itemCount} {tab === 'single' ? 'job' : 'batch'}{itemCount !== 1 ? (tab === 'single' ? 's' : 'es') : ''}
+            {tab === 'batch' && batchesLoading
+              ? 'Loading...'
+              : `${itemCount} ${tab === 'single' ? 'job' : 'batch'}${itemCount !== 1 ? (tab === 'single' ? 's' : 'es') : ''}`
+            }
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -115,7 +118,7 @@ function JobsPageInner() {
       {tab === 'single' ? (
         <TemplateJobList jobs={singleJobs} />
       ) : (
-        <PipelineBatchList batches={batches} />
+        <PipelineBatchList batches={batches} loading={batchesLoading} />
       )}
     </div>
   );
