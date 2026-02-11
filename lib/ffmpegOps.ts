@@ -49,8 +49,78 @@ function wrapByWordCount(text: string, wordsPerLine: number): string {
 }
 
 /**
+ * Resolve a CSS font-family to a system font file path.
+ * Falls back to a known default if nothing matches.
+ */
+function resolveFontFile(fontFamily?: string): string | null {
+  // Map CSS families to candidate file paths (macOS + Linux/Vercel)
+  const fontMap: Record<string, string[]> = {
+    'sans-serif': [
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+      '/System/Library/Fonts/Helvetica.ttc',
+    ],
+    'Impact, sans-serif': [
+      '/usr/share/fonts/truetype/msttcorefonts/Impact.ttf',
+      '/System/Library/Fonts/Supplemental/Impact.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    ],
+    'Georgia, serif': [
+      '/usr/share/fonts/truetype/msttcorefonts/Georgia.ttf',
+      '/System/Library/Fonts/Supplemental/Georgia.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf',
+    ],
+    'Courier New, monospace': [
+      '/usr/share/fonts/truetype/msttcorefonts/cour.ttf',
+      '/System/Library/Fonts/Supplemental/Courier New.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
+    ],
+    'Arial Black, sans-serif': [
+      '/usr/share/fonts/truetype/msttcorefonts/Arial_Black.ttf',
+      '/System/Library/Fonts/Supplemental/Arial Black.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    ],
+    'Times New Roman, serif': [
+      '/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf',
+      '/System/Library/Fonts/Supplemental/Times New Roman.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf',
+    ],
+    'Trebuchet MS, sans-serif': [
+      '/usr/share/fonts/truetype/msttcorefonts/Trebuchet_MS.ttf',
+      '/System/Library/Fonts/Supplemental/Trebuchet MS.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    ],
+    'Verdana, sans-serif': [
+      '/usr/share/fonts/truetype/msttcorefonts/Verdana.ttf',
+      '/System/Library/Fonts/Supplemental/Verdana.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    ],
+  };
+
+  // Universal fallbacks
+  const fallbacks = [
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
+    '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+    '/System/Library/Fonts/Helvetica.ttc',
+  ];
+
+  const candidates = fontFamily ? (fontMap[fontFamily] || fallbacks) : fallbacks;
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  // Last resort: try fallbacks
+  for (const p of fallbacks) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+/**
  * Burn text onto a video using ffmpeg drawtext filters.
  * Each line is a separate drawtext filter to support left/center/right alignment.
+ * Uses textfile= for each line to avoid escaping issues with complex text.
  */
 export function addTextOverlay(
   inputPath: string,
@@ -59,6 +129,7 @@ export function addTextOverlay(
 ): void {
   const {
     text, position, textAlign = 'center', fontSize = 48, fontColor = '#FFFFFF', bgColor,
+    fontFamily, textStyle,
     paddingLeft = 0, paddingRight = 0,
     customX, customY,
     wordsPerLine,
@@ -83,6 +154,73 @@ export function addTextOverlay(
   const lines = wrappedText.split('\n');
   const lineHeight = Math.round(fontSize * 1.3);
   const totalHeight = lines.length * lineHeight;
+
+  // ── Resolve font file ──
+  const fontFile = resolveFontFile(fontFamily);
+
+  // ── Style preset → FFmpeg properties ──
+  let shadowX = 0, shadowY = 0, borderW = 0;
+  let effectiveBgColor = bgColor;
+  let effectiveFontColor = fontColor;
+  let boxBorderW = 10;
+  let boxBorderRadius = 0; // FFmpeg doesn't support border-radius, but we adjust padding
+
+  if (textStyle) {
+    switch (textStyle) {
+      case 'bold-shadow':
+        shadowX = 2; shadowY = 2;
+        break;
+      case 'creator':
+        // Uppercase is applied in text processing below
+        break;
+      case 'text-box':
+        effectiveBgColor = effectiveBgColor || '#FFFFFF';
+        effectiveFontColor = '#000000';
+        boxBorderW = 10;
+        break;
+      case 'bubble':
+        effectiveBgColor = effectiveBgColor || '#ff3b30';
+        effectiveFontColor = '#FFFFFF';
+        boxBorderW = 14;
+        break;
+      case 'neon':
+        effectiveFontColor = '#ff00ff';
+        borderW = 2;
+        break;
+      case 'tag':
+        effectiveBgColor = effectiveBgColor || '#ffcc00';
+        effectiveFontColor = '#000000';
+        boxBorderW = 10;
+        break;
+      case 'subscribe':
+        effectiveBgColor = effectiveBgColor || '#ff0000';
+        effectiveFontColor = '#FFFFFF';
+        boxBorderW = 14;
+        break;
+      case 'retro':
+        effectiveFontColor = '#ff6b35';
+        shadowX = 3; shadowY = 3;
+        break;
+      case 'classic':
+        shadowX = 2; shadowY = 2;
+        break;
+      case 'caption':
+        effectiveBgColor = effectiveBgColor || '#000000';
+        effectiveFontColor = '#FFFFFF';
+        boxBorderW = 12;
+        break;
+      case 'rounded':
+        effectiveBgColor = effectiveBgColor || '#8b5cf6';
+        effectiveFontColor = '#FFFFFF';
+        boxBorderW = 16;
+        break;
+    }
+  }
+
+  // ── Apply uppercase for 'creator' and 'subscribe' styles ──
+  if (textStyle === 'creator' || textStyle === 'subscribe') {
+    lines.forEach((line, i) => { lines[i] = line.toUpperCase(); });
+  }
 
   // ── X expression per alignment ──
   const hOffset = (paddingLeft - paddingRight) / 2;
@@ -128,25 +266,63 @@ export function addTextOverlay(
     }
   }
 
-  // ── One drawtext filter per line ──
+  // ── Write each line to a temp text file (avoids all escaping headaches) ──
+  const tempDir = getTempDir();
+  const textFiles: string[] = [];
+
   const filters = lines.map((line, i) => {
-    const escaped = line.replace(/\\/g, '\\\\').replace(/'/g, "'\\''").replace(/:/g, '\\:');
+    const textFile = path.join(tempDir, `drawtext-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}.txt`);
+    fs.writeFileSync(textFile, line, 'utf-8');
+    textFiles.push(textFile);
+
+    const escapedPath = textFile.replace(/:/g, '\\:').replace(/'/g, "\\'");
     const yExpr = i === 0 ? baseYExpr : `${baseYExpr}+${i * lineHeight}`;
-    let f = `drawtext=text='${escaped}':fontsize=${fontSize}:fontcolor=${fontColor}:x=${xExpr}:y=${yExpr}`;
-    if (bgColor) {
-      f += `:box=1:boxcolor=${bgColor}@0.7:boxborderw=10`;
+
+    let f = `drawtext=textfile='${escapedPath}'` +
+      `:fontsize=${fontSize}` +
+      `:fontcolor=${effectiveFontColor}` +
+      `:x=${xExpr}` +
+      `:y=${yExpr}`;
+
+    // Font file
+    if (fontFile) {
+      const escapedFont = fontFile.replace(/:/g, '\\:').replace(/'/g, "\\'");
+      f += `:fontfile='${escapedFont}'`;
     }
+
+    // Shadow (drawtext uses shadowx/shadowy)
+    if (shadowX || shadowY) {
+      f += `:shadowcolor=black@0.6:shadowx=${shadowX}:shadowy=${shadowY}`;
+    }
+
+    // Border / outline (simulates glow or outline)
+    if (borderW > 0) {
+      f += `:borderw=${borderW}:bordercolor=${effectiveFontColor}@0.5`;
+    }
+
+    // Background box
+    if (effectiveBgColor) {
+      f += `:box=1:boxcolor=${effectiveBgColor}@0.7:boxborderw=${boxBorderW}`;
+    }
+
     f += enableExpr;
     return f;
   });
 
-  execFileSync('ffmpeg', [
-    '-y',
-    '-i', inputPath,
-    '-vf', filters.join(','),
-    '-c:a', 'copy',
-    outputPath,
-  ]);
+  try {
+    execFileSync('ffmpeg', [
+      '-y',
+      '-i', inputPath,
+      '-vf', filters.join(','),
+      '-c:a', 'copy',
+      outputPath,
+    ]);
+  } finally {
+    // Clean up temp text files
+    for (const f of textFiles) {
+      try { fs.unlinkSync(f); } catch {}
+    }
+  }
 }
 
 /**

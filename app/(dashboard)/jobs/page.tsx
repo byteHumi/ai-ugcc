@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 export default function JobsPage() {
-  const { jobs, refresh } = useTemplates();
+  const { jobs, refresh, refreshing } = useTemplates();
   const [newJobName, setNewJobName] = useState<string | null>(null);
 
   // Show a banner if we just came from creating a job
@@ -47,8 +47,8 @@ export default function JobsPage() {
         </div>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" onClick={refresh}>
-              <RefreshCw className="h-4 w-4" />
+            <Button variant="ghost" size="icon-sm" onClick={refresh} disabled={refreshing}>
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>
           </TooltipTrigger>
           <TooltipContent>Refresh</TooltipContent>

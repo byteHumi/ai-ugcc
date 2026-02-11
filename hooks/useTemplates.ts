@@ -42,6 +42,7 @@ function setCachedJobs(jobs: TemplateJob[]) {
 
 export function useTemplates() {
   const [jobs, setJobs] = useState<TemplateJob[]>(getCachedJobs);
+  const [refreshing, setRefreshing] = useState(false);
   const lastSnapshotRef = useRef('');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -122,10 +123,12 @@ export function useTemplates() {
   }, [loadJobs, scheduleNext]);
 
   const refresh = useCallback(async () => {
+    setRefreshing(true);
     lastSnapshotRef.current = '';
     await loadJobs();
+    if (mountedRef.current) setRefreshing(false);
     scheduleNext(); // re-kick adaptive timer after manual refresh
   }, [loadJobs, scheduleNext]);
 
-  return { jobs, refresh };
+  return { jobs, refresh, refreshing };
 }
