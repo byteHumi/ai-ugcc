@@ -23,7 +23,7 @@ export default function BatchDetailPage() {
   const [batch, setBatch] = useState<Batch | null>(_cache[id] || null);
   const [isLoading, setIsLoading] = useState(!_cache[id]);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [selectedJob, setSelectedJob] = useState<Batch['jobs'][number] | null>(null);
+  const [selectedJob, setSelectedJob] = useState<NonNullable<Batch['jobs']>[number] | null>(null);
   const [page, setPage] = useState(1);
 
   const loadBatch = useCallback(async (showLoader = false) => {
