@@ -1,26 +1,18 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { Batch } from '@/types';
 import { useToast } from '@/hooks/useToast';
-import { usePagination } from '@/hooks/usePagination';
 import { downloadVideo } from '@/lib/dateUtils';
+import { ChevronLeft, ChevronRight, RefreshCw, Trash2, Download, Send, Loader2, AlertCircle, CheckCircle2, XCircle, Clock, ArrowLeft, Layers } from 'lucide-react';
 import Spinner from '@/components/ui/Spinner';
-import RefreshButton from '@/components/ui/RefreshButton';
-import VideoPreviewModal from '@/components/posts/VideoPreviewModal';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationPrevious,
-  PaginationNext,
-  PaginationEllipsis,
-} from '@/components/ui/pagination';
+import StatusBadge from '@/components/ui/StatusBadge';
+import ProgressBar from '@/components/ui/ProgressBar';
+import Modal from '@/components/ui/Modal';
 
-// Module-level cache keyed by batch ID
+const PER_PAGE = 16;
 const _cache: Record<string, Batch> = {};
 
 export default function BatchDetailPage() {
@@ -31,7 +23,8 @@ export default function BatchDetailPage() {
   const [batch, setBatch] = useState<Batch | null>(_cache[id] || null);
   const [isLoading, setIsLoading] = useState(!_cache[id]);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [videoPreview, setVideoPreview] = useState<{ url: string; caption: string } | null>(null);
+  const [selectedJob, setSelectedJob] = useState<Batch['jobs'][number] | null>(null);
+  const [page, setPage] = useState(1);
 
   const loadBatch = useCallback(async (showLoader = false) => {
     if (showLoader) setIsLoading(true);
@@ -47,15 +40,19 @@ export default function BatchDetailPage() {
     }
   }, [id, showToast]);
 
-  // Only fetch on mount if not cached
   useEffect(() => {
-    if (!_cache[id]) {
-      loadBatch(true);
-    }
+    if (!_cache[id]) loadBatch(true);
   }, [id, loadBatch]);
 
   const jobs = batch?.jobs || [];
-  const { page, setPage, totalPages, paginatedItems, pageNumbers, hasPrev, hasNext, prevPage, nextPage } = usePagination(jobs, 10);
+  const totalPages = Math.max(1, Math.ceil(jobs.length / PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const paginatedJobs = useMemo(
+    () => jobs.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE),
+    [jobs, safePage],
+  );
+
+  const liveJob = selectedJob ? jobs.find((j) => j.id === selectedJob.id) ?? selectedJob : null;
 
   if (isLoading) {
     return (
@@ -69,49 +66,69 @@ export default function BatchDetailPage() {
     return (
       <div className="py-20 text-center">
         <h2 className="mb-2 text-xl font-semibold">Batch not found</h2>
-        <Link href="/batches" className="text-[var(--primary)] hover:underline">Back to batches</Link>
+        <Link href="/batches" className="text-sm text-[var(--primary)] hover:underline">Back to batches</Link>
       </div>
     );
   }
 
   const isActive = batch.status === 'pending' || batch.status === 'processing';
+  const isCompleted = batch.status === 'completed';
+  const isFailed = batch.status === 'failed';
+  const isPartial = batch.status === 'partial';
+  const progress = batch.totalJobs > 0 ? Math.round((batch.completedJobs / batch.totalJobs) * 100) : 0;
+  const pending = batch.totalJobs - batch.completedJobs - batch.failedJobs;
 
   return (
-    <div>
+    <div className="mx-auto max-w-5xl space-y-6">
       {/* Breadcrumb */}
-      <div className="mb-6 flex items-center gap-2 text-sm text-[var(--text-muted)]">
-        <Link href="/batches" className="hover:text-[var(--text)]">Batches</Link>
-        <span>/</span>
-        <span className="text-[var(--text)]">{batch.name}</span>
-      </div>
+      <Link href="/batches" className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Back to batches
+      </Link>
 
       {/* Header */}
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-xl">
-            {batch.model?.avatarUrl ? (
-              <img src={batch.model.avatarUrl} alt="" className="h-12 w-12 rounded-full object-cover" />
-            ) : (
-              '🎬'
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="relative h-12 w-12 shrink-0">
+            <div className={`flex h-12 w-12 items-center justify-center rounded-xl text-lg font-bold ${
+              isActive ? 'bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' :
+              isFailed ? 'bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400' :
+              isPartial ? 'bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' :
+              'bg-[var(--accent)] text-[var(--text-muted)]'
+            }`}>
+              {batch.name?.[0]?.toUpperCase() || 'B'}
+            </div>
+            {batch.model?.avatarUrl && (
+              <img
+                src={batch.model.avatarUrl}
+                alt=""
+                className="absolute inset-0 h-full w-full rounded-xl object-cover z-10"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
             )}
           </div>
           <div>
-            <h1 className="text-2xl font-bold">{batch.name}</h1>
-            <p className="text-[var(--text-muted)]">{batch.model?.name || 'Single image'}</p>
+            <h1 className="text-2xl font-bold tracking-tight text-[var(--primary)]">{batch.name}</h1>
+            <p className="text-xs text-[var(--text-muted)]">{batch.model?.name || 'Single image'}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`rounded-full px-3 py-1 text-sm font-medium ${
-            batch.status === 'completed' ? 'bg-[var(--success-bg)] text-[var(--success)]' :
-            batch.status === 'failed' ? 'bg-[var(--error-bg)] text-[var(--error)]' :
-            batch.status === 'partial' ? 'bg-[var(--warning-bg)] text-[var(--warning)]' :
-            isActive ? 'bg-blue-50 text-blue-600' :
-            'bg-[var(--background)] text-[var(--text-muted)]'
+          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+            isCompleted ? 'bg-[var(--accent)] text-[var(--text-muted)]' :
+            isFailed ? 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' :
+            isPartial ? 'bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' :
+            isActive ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' :
+            'bg-[var(--accent)] text-[var(--text-muted)]'
           }`}>
-            {isActive && <span className="mr-1.5 inline-block h-2 w-2 animate-pulse rounded-full bg-blue-500" />}
-            {batch.status}
+            {isActive && <Loader2 className="h-3 w-3 animate-spin" />}
+            {batch.status.charAt(0).toUpperCase() + batch.status.slice(1)}
           </span>
-          <RefreshButton onClick={() => loadBatch()} />
+          <button
+            onClick={() => loadBatch()}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] transition-colors hover:bg-[var(--accent)]"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
           <button
             onClick={async () => {
               if (!confirm('Delete this batch? Completed videos will be preserved.')) return;
@@ -125,153 +142,219 @@ export default function BatchDetailPage() {
               }
             }}
             disabled={isDeleting}
-            className="rounded-lg border border-[var(--error)] bg-[var(--error-bg)] px-3 py-1.5 text-sm text-[var(--error)] hover:opacity-80 disabled:opacity-50"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-300 text-red-500 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:hover:bg-red-950/30"
           >
-            {isDeleting ? <Spinner className="h-4 w-4" /> : 'Delete'}
+            {isDeleting ? <Spinner className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
           </button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-          <div className="mb-1 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Total</div>
-          <div className="text-3xl font-bold">{batch.totalJobs}</div>
-          <div className="mt-1 text-xs text-[var(--text-muted)]">videos</div>
+      {/* Stats + Progress */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--background)] px-3 py-1.5 text-xs font-medium text-[var(--text)]">
+            <Layers className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+            {batch.totalJobs} total
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            {batch.completedJobs} done
+          </span>
+          {batch.failedJobs > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 px-3 py-1.5 text-xs font-medium text-red-500 dark:text-red-400">
+              <XCircle className="h-3.5 w-3.5" />
+              {batch.failedJobs} failed
+            </span>
+          )}
+          {pending > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--background)] px-3 py-1.5 text-xs font-medium text-[var(--text-muted)]">
+              <Clock className="h-3.5 w-3.5" />
+              {pending} pending
+            </span>
+          )}
         </div>
-        <div className="rounded-xl border border-[var(--success)]/20 bg-[var(--success-bg)] p-4">
-          <div className="mb-1 text-xs font-medium uppercase tracking-wider text-[var(--success)]">Completed</div>
-          <div className="text-3xl font-bold text-[var(--success)]">{batch.completedJobs}</div>
-          <div className="mt-1 text-xs text-[var(--success)]">{batch.totalJobs > 0 ? Math.round((batch.completedJobs / batch.totalJobs) * 100) : 0}% done</div>
-        </div>
-        <div className="rounded-xl border border-[var(--error)]/20 bg-[var(--error-bg)] p-4">
-          <div className="mb-1 text-xs font-medium uppercase tracking-wider text-[var(--error)]">Failed</div>
-          <div className="text-3xl font-bold text-[var(--error)]">{batch.failedJobs}</div>
-          <div className="mt-1 text-xs text-[var(--error)]">{batch.totalJobs > 0 ? Math.round((batch.failedJobs / batch.totalJobs) * 100) : 0}% failed</div>
-        </div>
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
-          <div className="mb-1 text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Pending</div>
-          <div className="text-3xl font-bold text-[var(--text-muted)]">{batch.totalJobs - batch.completedJobs - batch.failedJobs}</div>
-          <div className="mt-1 text-xs text-[var(--text-muted)]">remaining</div>
-        </div>
+        {isActive && (
+          <div className="mt-3">
+            <ProgressBar progress={progress} />
+            <div className="mt-1 text-[10px] text-[var(--text-muted)]">{progress}% complete</div>
+          </div>
+        )}
       </div>
 
       {/* Videos grid */}
-      <h2 className="mb-4 text-lg font-semibold">Videos ({jobs.length})</h2>
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-[var(--text-muted)]">Videos ({jobs.length})</h2>
 
-      {jobs.length === 0 ? (
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center text-[var(--text-muted)]">
-          No videos in this batch
-        </div>
-      ) : (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {paginatedItems.map((job) => (
-              <div key={job.id} className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-                {/* Video thumbnail */}
-                <div
-                  className={`relative aspect-video bg-[var(--background)] ${(job.signedUrl || job.outputUrl) ? 'cursor-pointer group' : ''}`}
-                  onClick={() => {
-                    if (job.signedUrl || job.outputUrl) {
-                      setVideoPreview({
-                        url: job.signedUrl || job.outputUrl || '',
-                        caption: job.videoSource === 'upload' ? 'Uploaded video' : (job.tiktokUrl || ''),
-                      });
-                    }
-                  }}
-                >
-                  {(job.signedUrl || job.outputUrl) ? (
-                    <>
-                      <video
-                        src={job.signedUrl || job.outputUrl}
-                        className="h-full w-full object-cover"
-                        muted
-                        playsInline
-                        preload="metadata"
-                        onLoadedMetadata={(e) => { e.currentTarget.currentTime = 0.1; }}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 shadow-lg">
-                          <svg className="ml-0.5 h-5 w-5 text-[var(--primary)]" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-3xl text-[var(--text-muted)]">
-                      {job.status === 'failed' ? '❌' : '🎬'}
-                    </div>
-                  )}
-                  {/* Status badge overlay */}
-                  <span className={`absolute right-2 top-2 rounded-full px-2 py-0.5 text-xs font-medium ${
-                    job.status === 'completed' ? 'bg-[var(--success-bg)] text-[var(--success)]' :
-                    job.status === 'failed' ? 'bg-[var(--error-bg)] text-[var(--error)]' :
-                    'bg-[var(--warning-bg)] text-[var(--warning)]'
-                  }`}>
-                    {job.status}
-                  </span>
-                </div>
-
-                {/* Info */}
-                <div className="p-3">
-                  <div className="mb-1 truncate text-sm">
-                    {job.videoSource === 'upload' ? 'Uploaded video' : job.tiktokUrl}
-                  </div>
-                  <div className="mb-2 text-xs text-[var(--text-muted)]">{job.step}</div>
-
-                  {job.status === 'completed' && (job.signedUrl || job.outputUrl) && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => downloadVideo(job.signedUrl || job.outputUrl!, `video-${job.id}.mp4`, showToast)}
-                        className="flex-1 rounded-lg border border-[var(--border)] py-1.5 text-center text-xs font-medium hover:bg-[var(--background)]"
-                      >
-                        Download
-                      </button>
-                      <button
-                        onClick={() => {
-                          router.push('/posts?createPost=true&videoUrl=' + encodeURIComponent(job.outputUrl!));
-                        }}
-                        className="flex-1 rounded-lg border border-[var(--accent-border)] bg-[var(--accent)] py-1.5 text-center text-xs font-medium hover:bg-[#fde68a]"
-                      >
-                        Create Post
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+        {jobs.length === 0 ? (
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center text-sm text-[var(--text-muted)]">
+            No videos in this batch
           </div>
+        ) : (
+          <>
+            <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+              {paginatedJobs.map((job) => {
+                const hasVideo = job.status === 'completed' && (job.signedUrl || job.outputUrl);
+                const jobActive = job.status === 'queued' || job.status === 'processing';
 
-          {totalPages > 1 && (
-            <Pagination className="mt-6">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious onClick={prevPage} className={!hasPrev ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-                {pageNumbers.map((p, i) =>
-                  p === 'ellipsis' ? (
-                    <PaginationItem key={`e-${i}`}>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  ) : (
-                    <PaginationItem key={p}>
-                      <PaginationLink isActive={page === p} onClick={() => setPage(p)} className="cursor-pointer">
-                        {p}
-                      </PaginationLink>
-                    </PaginationItem>
-                  )
+                return (
+                  <div
+                    key={job.id}
+                    onClick={() => setSelectedJob(job)}
+                    className={`group cursor-pointer overflow-hidden rounded-xl shadow-sm transition-all hover:shadow-lg ${
+                      jobActive ? 'ring-1 ring-blue-300' : ''
+                    }`}
+                  >
+                    <div className="relative w-full bg-black/90" style={{ aspectRatio: '9/16' }}>
+                      {hasVideo ? (
+                        <video
+                          src={job.signedUrl || job.outputUrl}
+                          className="absolute inset-0 h-full w-full object-contain"
+                          muted
+                          playsInline
+                          preload="metadata"
+                          onLoadedMetadata={(e) => { e.currentTarget.currentTime = 0.1; }}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          {jobActive ? (
+                            <Loader2 className="h-5 w-5 animate-spin text-blue-400" />
+                          ) : job.status === 'failed' ? (
+                            <AlertCircle className="h-5 w-5 text-red-400" />
+                          ) : (
+                            <span className="text-[10px] text-white/40">Queued</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="absolute left-1.5 top-1.5">
+                        <StatusBadge status={job.status} />
+                      </div>
+                    </div>
+                    <div className="bg-[var(--surface)] px-2.5 py-2">
+                      <p className="truncate text-xs font-medium">
+                        {job.videoSource === 'upload' ? 'Uploaded video' : job.tiktokUrl?.replace('https://www.tiktok.com/', '').slice(0, 30) || 'Video'}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{job.step || ''}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-1.5 pt-4">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage <= 1}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] transition-colors hover:bg-[var(--accent)] disabled:opacity-30 disabled:pointer-events-none"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                      p === safePage
+                        ? 'bg-[var(--primary)] text-white'
+                        : 'border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--accent)]'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage >= totalPages}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] transition-colors hover:bg-[var(--accent)] disabled:opacity-30 disabled:pointer-events-none"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Detail Modal */}
+      <Modal
+        open={!!liveJob}
+        onClose={() => setSelectedJob(null)}
+        title={
+          liveJob
+            ? liveJob.videoSource === 'upload'
+              ? 'Uploaded video'
+              : liveJob.tiktokUrl?.replace('https://www.tiktok.com/', '').slice(0, 30) || 'Video'
+            : 'Job'
+        }
+        maxWidth="max-w-xs"
+      >
+        {liveJob && (() => {
+          const jobCompleted = liveJob.status === 'completed';
+          const jobFailed = liveJob.status === 'failed';
+          const jobActive = liveJob.status === 'queued' || liveJob.status === 'processing';
+          const videoSrc = liveJob.signedUrl || liveJob.outputUrl;
+
+          return (
+            <div className="flex flex-col">
+              <div className="relative w-full bg-black" style={{ aspectRatio: '9/16', maxHeight: 600 }}>
+                {jobCompleted && videoSrc ? (
+                  <video
+                    src={videoSrc}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="absolute inset-0 h-full w-full object-contain"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                    {jobActive ? (
+                      <>
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+                        <span className="text-xs text-white/60">{liveJob.step || 'Processing...'}</span>
+                      </>
+                    ) : jobFailed ? (
+                      <>
+                        <AlertCircle className="h-6 w-6 text-red-400" />
+                        <span className="text-xs text-white/60">Failed</span>
+                      </>
+                    ) : (
+                      <span className="text-xs text-white/40">Queued</span>
+                    )}
+                  </div>
                 )}
-                <PaginationItem>
-                  <PaginationNext onClick={nextPage} className={!hasNext ? 'pointer-events-none opacity-50' : 'cursor-pointer'} />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
-        </>
-      )}
-
-      <VideoPreviewModal video={videoPreview} onClose={() => setVideoPreview(null)} />
+              </div>
+              <div className="p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <StatusBadge status={liveJob.status} />
+                  {liveJob.step && <span className="text-[10px] text-[var(--text-muted)] truncate ml-2">{liveJob.step}</span>}
+                </div>
+                {jobCompleted && videoSrc && (
+                  <div className="flex gap-2 pt-0.5">
+                    <button
+                      onClick={() => downloadVideo(videoSrc!, `video-${liveJob.id}.mp4`, showToast)}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--text)] transition-colors hover:bg-[var(--accent)]"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedJob(null);
+                        router.push(`/posts?createPost=true&videoUrl=${encodeURIComponent(videoSrc!)}`);
+                      }}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-medium text-white transition-colors hover:opacity-90"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      Create Post
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 }

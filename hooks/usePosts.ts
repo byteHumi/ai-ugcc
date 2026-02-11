@@ -3,84 +3,125 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Post } from '@/types';
 
-const REFRESH_INTERVAL = 60_000;
-const ACTIVE_POLL_INTERVAL = 5_000;
+const ACTIVE_POLL_INTERVAL = 2_000;   // 2s when posts are publishing
+const IDLE_POLL_INTERVAL   = 60_000;  // 60s baseline
+const CACHE_KEY = 'ai-ugc-posts';
 
-// Module-level cache (keyed by filter)
-const _cache: Record<string, { data: Post[]; time: number }> = {};
+function getCachedPosts(): { posts: Post[]; filter: string } | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.posts)) return parsed;
+    }
+  } catch {}
+  return null;
+}
+
+function setCachedPosts(posts: Post[], filter: string) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ posts, filter })); } catch {}
+}
 
 export function usePosts() {
-  const [posts, setPosts] = useState<Post[]>([]);
   const [postsFilter, setPostsFilter] = useState<string>('all');
-  const [isLoadingPage, setIsLoadingPage] = useState(true);
-  const activePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadPosts = useCallback(async (force = false) => {
-    const now = Date.now();
-    const cached = _cache[postsFilter];
-    if (!force && cached && now - cached.time < REFRESH_INTERVAL) {
-      setPosts(cached.data);
-      setIsLoadingPage(false);
-      return;
-    }
+  // Initialize from cache if filter matches
+  const [posts, setPosts] = useState<Post[]>(() => {
+    const cached = getCachedPosts();
+    return cached && cached.filter === 'all' ? cached.posts : [];
+  });
+  const [isLoadingPage, setIsLoadingPage] = useState(() => {
+    const cached = getCachedPosts();
+    return !(cached && cached.filter === 'all' && cached.posts.length > 0);
+  });
+
+  const lastSnapshotRef = useRef('');
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+  const filterRef = useRef(postsFilter);
+  filterRef.current = postsFilter;
+
+  const loadPosts = useCallback(async () => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     try {
       let endpoint = '/api/late/posts?limit=50';
-      if (postsFilter !== 'all') endpoint += `&status=${postsFilter}`;
-      const res = await fetch(endpoint);
+      if (filterRef.current !== 'all') endpoint += `&status=${filterRef.current}`;
+      const res = await fetch(endpoint, { signal: ac.signal });
+      if (!mountedRef.current) return;
       const data = await res.json();
-      const result = data.posts || [];
-      _cache[postsFilter] = { data: result, time: Date.now() };
-      setPosts(result);
-    } catch (e) {
+      const arr: Post[] = data.posts || [];
+
+      // Snapshot: only update state if data actually changed
+      const snapshot = arr.map((p) => {
+        const pStatus = p.platforms?.map((pl) => `${pl.platform}:${pl.status}`).join(',') || '';
+        return `${p._id}:${pStatus}:${p.content?.slice(0, 20) || ''}`;
+      }).join('|');
+
+      if (snapshot !== lastSnapshotRef.current) {
+        lastSnapshotRef.current = snapshot;
+        setPosts(arr);
+        setCachedPosts(arr, filterRef.current);
+      }
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
       console.error('Failed to load posts:', e);
     } finally {
-      setIsLoadingPage(false);
+      if (mountedRef.current) setIsLoadingPage(false);
     }
-  }, [postsFilter]);
+  }, []);
 
-  // Load on mount and filter change (uses cache if fresh)
+  // Adaptive polling
+  const scheduleNext = useCallback(() => {
+    if (!mountedRef.current) return;
+    setPosts((current) => {
+      const hasActive = current.some((p) => {
+        const status = p.platforms?.[0]?.status || '';
+        return status === 'publishing' || status === 'processing' || status === 'in_progress' || status === 'pending';
+      });
+      const delay = hasActive ? ACTIVE_POLL_INTERVAL : IDLE_POLL_INTERVAL;
+
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(async () => {
+        await loadPosts();
+        scheduleNext();
+      }, delay);
+
+      return current;
+    });
+  }, [loadPosts]);
+
+  // On filter change: reset snapshot, reload
   useEffect(() => {
-    const cached = _cache[postsFilter];
-    if (cached && Date.now() - cached.time < REFRESH_INTERVAL) {
-      setPosts(cached.data);
+    lastSnapshotRef.current = '';
+    const cached = getCachedPosts();
+    if (cached && cached.filter === postsFilter && cached.posts.length > 0) {
+      setPosts(cached.posts);
       setIsLoadingPage(false);
     } else {
       setIsLoadingPage(true);
-      loadPosts();
     }
-  }, [postsFilter, loadPosts]);
+    loadPosts().then(scheduleNext);
+  }, [postsFilter, loadPosts, scheduleNext]);
 
-  // 60s baseline refresh
+  // Mount / unmount
   useEffect(() => {
-    const id = setInterval(() => loadPosts(true), REFRESH_INTERVAL);
-    return () => clearInterval(id);
-  }, [loadPosts]);
-
-  // Fast poll when posts are publishing
-  useEffect(() => {
-    const hasPublishing = posts.some((p) => {
-      const status = p.platforms?.[0]?.status || '';
-      return status === 'publishing' || status === 'processing' || status === 'in_progress' || status === 'pending';
-    });
-    if (hasPublishing && !activePollRef.current) {
-      activePollRef.current = setInterval(() => loadPosts(true), ACTIVE_POLL_INTERVAL);
-    } else if (!hasPublishing && activePollRef.current) {
-      clearInterval(activePollRef.current);
-      activePollRef.current = null;
-    }
+    mountedRef.current = true;
     return () => {
-      if (activePollRef.current) {
-        clearInterval(activePollRef.current);
-        activePollRef.current = null;
-      }
+      mountedRef.current = false;
+      abortRef.current?.abort();
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [posts, loadPosts]);
+  }, []);
 
-  const refresh = useCallback(() => {
-    // Invalidate all filter caches
-    Object.keys(_cache).forEach((k) => delete _cache[k]);
-    return loadPosts(true);
-  }, [loadPosts]);
+  const refresh = useCallback(async () => {
+    lastSnapshotRef.current = '';
+    await loadPosts();
+    scheduleNext();
+  }, [loadPosts, scheduleNext]);
 
   return { posts, postsFilter, setPostsFilter, isLoadingPage, refresh };
 }

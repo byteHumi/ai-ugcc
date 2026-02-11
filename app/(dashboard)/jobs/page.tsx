@@ -13,7 +13,7 @@ export default function JobsPage() {
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Jobs</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--primary)]">Jobs</h1>
           <p className="text-xs text-[var(--text-muted)]">
             {jobs.length} job{jobs.length !== 1 ? 's' : ''}
           </p>

@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createTemplateJob, getAllTemplateJobs, initDatabase } from '@/lib/db';
-import { getSignedUrlFromPublicUrl } from '@/lib/storage';
+import { getCachedSignedUrl } from '@/lib/signedUrlCache';
 import { processTemplateJob } from '@/lib/processTemplateJob';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
     await initDatabase();
     const jobs = await getAllTemplateJobs();
 
-    // Generate signed URLs for completed jobs with GCS output
+    // Only sign completed jobs that have a GCS output URL.
+    // Cached — subsequent polls are nearly instant.
     const jobsWithSignedUrls = await Promise.all(
-      jobs.map(async (job: { outputUrl?: string; [key: string]: unknown }) => {
-        if (job.outputUrl && job.outputUrl.includes('storage.googleapis.com')) {
+      jobs.map(async (job: { status?: string; outputUrl?: string; [key: string]: unknown }) => {
+        if (
+          job.status === 'completed' &&
+          job.outputUrl &&
+          job.outputUrl.includes('storage.googleapis.com')
+        ) {
           try {
-            const signedUrl = await getSignedUrlFromPublicUrl(job.outputUrl);
+            const signedUrl = await getCachedSignedUrl(job.outputUrl);
             return { ...job, signedUrl };
           } catch {
             return { ...job, signedUrl: job.outputUrl };

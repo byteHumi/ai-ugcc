@@ -29,7 +29,7 @@ function PostsPageContent() {
     <div>
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Posts</h1>
+          <h1 className="text-2xl font-bold text-[var(--primary)]">Posts</h1>
           <p className="text-[var(--text-muted)]">Manage scheduled and published content</p>
         </div>
         <div className="flex items-center gap-2">

@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getAllJobs } from '@/lib/db';
-import { getSignedUrlFromPublicUrl } from '@/lib/storage';
+import { getCachedSignedUrl } from '@/lib/signedUrlCache';
 
 export const dynamic = 'force-dynamic';
 
 type Job = {
   id: string;
+  status?: string;
   outputUrl?: string;
   [key: string]: unknown;
 };
@@ -14,12 +15,16 @@ export async function GET() {
   try {
     const jobs = await getAllJobs() as Job[];
 
-    // Convert outputUrl to signed URL for each completed job
+    // Only sign completed jobs. Cached — subsequent polls are nearly instant.
     const jobsWithSignedUrls = await Promise.all(
       jobs.map(async (job) => {
-        if (job.outputUrl && job.outputUrl.includes('storage.googleapis.com')) {
+        if (
+          job.status === 'completed' &&
+          job.outputUrl &&
+          job.outputUrl.includes('storage.googleapis.com')
+        ) {
           try {
-            const signedUrl = await getSignedUrlFromPublicUrl(job.outputUrl);
+            const signedUrl = await getCachedSignedUrl(job.outputUrl);
             return { ...job, signedUrl, outputUrl: job.outputUrl };
           } catch {
             return { ...job, signedUrl: job.outputUrl };

@@ -4,7 +4,9 @@ import { useState } from 'react';
 import type { Profile } from '@/types';
 import { useToast } from '@/hooks/useToast';
 import { useConnections } from '@/hooks/useConnections';
-import RefreshButton from '@/components/ui/RefreshButton';
+import { RefreshCw, Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import ProfileSelector from '@/components/connections/ProfileSelector';
 import PlatformGrid from '@/components/connections/PlatformGrid';
 import NewProfileModal from '@/components/connections/NewProfileModal';
@@ -42,19 +44,29 @@ export default function ConnectionsPage() {
   };
 
   return (
-    <div>
-      <div className="mb-6 flex items-start justify-between">
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Connections</h1>
-          <p className="text-[var(--text-muted)]">Manage profiles and platform integrations</p>
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--primary)]">Connections</h1>
+          <p className="text-xs text-[var(--text-muted)]">
+            {profiles.length} profile{profiles.length !== 1 ? 's' : ''} &middot; {accounts.length} account{accounts.length !== 1 ? 's' : ''}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <RefreshButton onClick={refresh} />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={refresh}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh</TooltipContent>
+          </Tooltip>
           <button
             onClick={() => setNewProfileModal(true)}
-            className="rounded-lg bg-[var(--primary)] px-4 py-2 font-medium text-white hover:bg-[var(--primary-hover)]"
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-medium text-white transition-colors hover:opacity-90"
           >
-            + New Profile
+            <Plus className="h-3.5 w-3.5" />
+            New Profile
           </button>
         </div>
       </div>

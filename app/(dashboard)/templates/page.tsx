@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Save, BookOpen, Trash2, PanelRightOpen, PanelRightClose } from 'lucide-react';
+import { Save, BookOpen, Trash2, PanelRightOpen, PanelRightClose, Play } from 'lucide-react';
 import { usePresets } from '@/hooks/usePresets';
 import { useVideoUpload } from '@/hooks/useVideoUpload';
 import { useToast } from '@/hooks/useToast';
@@ -236,55 +236,55 @@ export default function TemplatesPage() {
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-3 md:px-6">
         <div className="shrink-0">
-          <h1 className="text-2xl font-bold tracking-tight">Templates</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--primary)]">Templates</h1>
           <p className="text-xs text-[var(--text-muted)]">Build multi-step video pipelines</p>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Pipeline name..."
-            className="h-8 w-[160px] rounded-md bg-[var(--surface)] px-2.5 text-sm shadow-sm backdrop-blur-xl placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-border)]"
-          />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={() => setShowPresets(true)}>
-                <BookOpen className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Presets</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={() => setShowSavePreset(true)} disabled={steps.length === 0}>
-                <Save className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Save preset</TooltipContent>
-          </Tooltip>
-          <Button
-            size="sm"
+        <div className="flex items-center gap-2">
+          {/* Grouped toolbar */}
+          <div className="flex items-center rounded-lg border border-[var(--border)] bg-[var(--surface)] backdrop-blur-xl">
+            <button
+              onClick={() => setShowPresets(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text)] hover:bg-[var(--accent)] rounded-l-lg"
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Presets</span>
+            </button>
+            <div className="h-5 w-px bg-[var(--border)]" />
+            <button
+              onClick={() => setShowSavePreset(true)}
+              disabled={steps.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text)] hover:bg-[var(--accent)] disabled:opacity-40 disabled:pointer-events-none"
+            >
+              <Save className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Save</span>
+            </button>
+            <div className="h-5 w-px bg-[var(--border)]" />
+            <button
+              onClick={() => setPanelOpen(!panelOpen)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text)] hover:bg-[var(--accent)] rounded-r-lg"
+            >
+              {panelOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">Panel</span>
+            </button>
+          </div>
+
+          {/* Run button — separate, prominent */}
+          <button
             onClick={handleRun}
             disabled={isSubmitting || steps.filter((s) => s.enabled).length === 0}
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-xs font-semibold text-white transition-all hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none"
           >
-            {isSubmitting ? <Spinner className="h-3.5 w-3.5" /> : 'Run'}
-          </Button>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={() => setPanelOpen(!panelOpen)}>
-                {panelOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{panelOpen ? 'Hide panel' : 'Show panel'}</TooltipContent>
-          </Tooltip>
+            {isSubmitting ? <Spinner className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 fill-current" />}
+            Run
+          </button>
         </div>
       </div>
 
       {/* Main area: Canvas + Config Panel */}
       <div className="flex" style={{ height: 'calc(100vh - 7.5rem)' }}>
-        {/* Left: Flow canvas + jobs */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        {/* Left: Flow canvas */}
+        <div className="relative flex-1">
           <PipelineBuilder
             steps={steps}
             onChange={setSteps}

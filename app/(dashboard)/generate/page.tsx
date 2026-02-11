@@ -39,7 +39,7 @@ function GeneratePageContent() {
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-bold">Generate Videos</h1>
+      <h1 className="mb-1 text-2xl font-bold text-[var(--primary)]">Generate Videos</h1>
       <p className="mb-6 text-[var(--text-muted)]">Create AI-powered UGC videos from TikTok content</p>
 
       <div className="mb-6 flex gap-2">

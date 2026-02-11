@@ -18,7 +18,7 @@ export default function ModelsPage() {
     <div>
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Models</h1>
+          <h1 className="text-2xl font-bold text-[var(--primary)]">Models</h1>
           <p className="text-[var(--text-muted)]">Manage personas with multiple reference images</p>
         </div>
         <div className="flex items-center gap-2">

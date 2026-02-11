@@ -2,19 +2,30 @@
 
 import { useBatches } from '@/hooks/useBatches';
 import BatchList from '@/components/batches/BatchList';
-import RefreshButton from '@/components/ui/RefreshButton';
+import { RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 export default function BatchesPage() {
   const { batches, isLoadingPage, refresh } = useBatches();
 
   return (
-    <div>
-      <div className="mb-6 flex items-start justify-between">
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Batches</h1>
-          <p className="text-[var(--text-muted)]">Track bulk video generation progress</p>
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--primary)]">Batches</h1>
+          <p className="text-xs text-[var(--text-muted)]">
+            {batches.length} batch{batches.length !== 1 ? 'es' : ''}
+          </p>
         </div>
-        <RefreshButton onClick={refresh} />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon-sm" onClick={refresh}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh</TooltipContent>
+        </Tooltip>
       </div>
 
       <BatchList batches={batches} isLoading={isLoadingPage} />
