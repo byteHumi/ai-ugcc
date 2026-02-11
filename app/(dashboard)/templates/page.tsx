@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Save, BookOpen, Trash2, PanelRightOpen, PanelRightClose, Play } from 'lucide-react';
+import { Save, BookOpen, Trash2, PanelRightOpen, PanelRightClose, Play, Loader2 } from 'lucide-react';
 import { usePresets } from '@/hooks/usePresets';
 import { useVideoUpload } from '@/hooks/useVideoUpload';
 import { useToast } from '@/hooks/useToast';
@@ -37,7 +37,7 @@ function loadDraft(): PipelineDraft | null {
 
 export default function TemplatesPage() {
   const router = useRouter();
-  const { presets, savePreset, deletePreset } = usePresets();
+  const { presets, isLoading: presetsLoading, isSaving: presetSaving, savePreset, deletePreset } = usePresets();
   const { uploadVideo, isUploading, progress } = useVideoUpload();
   const { showToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -221,8 +221,13 @@ export default function TemplatesPage() {
         throw new Error(data.error || 'Failed to create template job');
       }
 
+      const data = await res.json();
+      // Store new job so /jobs page shows it instantly
+      try {
+        sessionStorage.setItem('ai-ugc-new-job', JSON.stringify(data));
+        sessionStorage.removeItem(DRAFT_KEY);
+      } catch {}
       showToast('Pipeline started!', 'success');
-      try { sessionStorage.removeItem(DRAFT_KEY); } catch {}
       router.push('/jobs');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to start pipeline', 'error');
@@ -358,9 +363,14 @@ export default function TemplatesPage() {
       {/* Presets Modal */}
       <Modal open={showPresets} onClose={() => setShowPresets(false)} title="Pipeline Presets">
         <div className="p-4">
-          {presets.length === 0 ? (
+          {presetsLoading && presets.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-8">
+              <Loader2 className="h-4 w-4 animate-spin text-[var(--primary)]" />
+              <span className="text-sm text-[var(--text-muted)]">Loading presets...</span>
+            </div>
+          ) : presets.length === 0 ? (
             <div className="py-8 text-center text-sm text-[var(--text-muted)]">
-              No saved presets yet. Build a pipeline and click "Save" to create one.
+              No saved presets yet. Build a pipeline and click &ldquo;Save&rdquo; to create one.
             </div>
           ) : (
             <div className="space-y-2">
@@ -413,8 +423,11 @@ export default function TemplatesPage() {
             This will save the current {steps.length} step{steps.length !== 1 ? 's' : ''} as a reusable preset.
           </div>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setShowSavePreset(false)} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm">Cancel</button>
-            <button onClick={handleSavePreset} className="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm text-white">Save Preset</button>
+            <button onClick={() => setShowSavePreset(false)} disabled={presetSaving} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm disabled:opacity-50">Cancel</button>
+            <button onClick={handleSavePreset} disabled={presetSaving} className="flex items-center gap-2 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm text-white disabled:opacity-70">
+              {presetSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {presetSaving ? 'Saving...' : 'Save Preset'}
+            </button>
           </div>
         </div>
       </Modal>

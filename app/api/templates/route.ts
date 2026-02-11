@@ -11,7 +11,7 @@ export async function GET() {
     const jobs = await getAllTemplateJobs();
 
     // Only sign completed jobs that have a GCS output URL.
-    // Cached — subsequent polls are nearly instant.
+    // Each signing has a 5s timeout to prevent the whole request from hanging.
     const jobsWithSignedUrls = await Promise.all(
       jobs.map(async (job: { status?: string; outputUrl?: string; [key: string]: unknown }) => {
         if (
@@ -20,7 +20,10 @@ export async function GET() {
           job.outputUrl.includes('storage.googleapis.com')
         ) {
           try {
-            const signedUrl = await getCachedSignedUrl(job.outputUrl);
+            const signedUrl = await Promise.race([
+              getCachedSignedUrl(job.outputUrl),
+              new Promise<string>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+            ]);
             return { ...job, signedUrl };
           } catch {
             return { ...job, signedUrl: job.outputUrl };

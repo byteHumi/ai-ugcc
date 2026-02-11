@@ -116,6 +116,7 @@ export type BgMusicConfig = {
   volume: number;
   fadeIn?: number;
   fadeOut?: number;
+  applyToSteps?: string[]; // step IDs to apply music to; empty/undefined = all video steps
 };
 
 export type AttachVideoConfig = {

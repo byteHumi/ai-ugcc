@@ -5,6 +5,7 @@ import type { TemplateJob } from '@/types';
 
 const ACTIVE_POLL_INTERVAL = 1_500;  // 1.5s when jobs are running
 const IDLE_POLL_INTERVAL   = 30_000; // 30s baseline
+const FETCH_TIMEOUT        = 15_000; // 15s max per request
 const CACHE_KEY = 'ai-ugc-template-jobs';
 
 function getCachedJobs(): TemplateJob[] {
@@ -12,8 +13,25 @@ function getCachedJobs(): TemplateJob[] {
     const raw = localStorage.getItem(CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        // Inject freshly-created job from sessionStorage so it shows instantly
+        try {
+          const newJobRaw = sessionStorage.getItem('ai-ugc-new-job');
+          if (newJobRaw) {
+            const newJob = JSON.parse(newJobRaw) as TemplateJob;
+            if (!parsed.some((j: TemplateJob) => j.id === newJob.id)) {
+              return [newJob, ...parsed];
+            }
+          }
+        } catch {}
+        return parsed;
+      }
     }
+  } catch {}
+  // Even if no cache, check for new job
+  try {
+    const newJobRaw = sessionStorage.getItem('ai-ugc-new-job');
+    if (newJobRaw) return [JSON.parse(newJobRaw)];
   } catch {}
   return [];
 }
@@ -35,9 +53,14 @@ export function useTemplates() {
     const ac = new AbortController();
     abortRef.current = ac;
 
+    // Abort after timeout to prevent hanging
+    const timeout = setTimeout(() => ac.abort(), FETCH_TIMEOUT);
+
     try {
       const res = await fetch('/api/templates', { signal: ac.signal });
+      clearTimeout(timeout);
       if (!mountedRef.current) return;
+      if (!res.ok) return; // silently skip bad responses
       const data = await res.json();
       const arr: TemplateJob[] = Array.isArray(data) ? data : [];
 
@@ -49,10 +72,20 @@ export function useTemplates() {
         lastSnapshotRef.current = snapshot;
         setJobs(arr);
         setCachedJobs(arr);
+        // Clear injected new-job once it appears in real data
+        try {
+          const njRaw = sessionStorage.getItem('ai-ugc-new-job');
+          if (njRaw) {
+            const nj = JSON.parse(njRaw);
+            if (arr.some((j) => j.id === nj.id)) {
+              sessionStorage.removeItem('ai-ugc-new-job');
+            }
+          }
+        } catch {}
       }
-    } catch (e: unknown) {
-      if (e instanceof DOMException && e.name === 'AbortError') return;
-      console.error('Failed to load template jobs:', e);
+    } catch {
+      clearTimeout(timeout);
+      // Silently ignore — cached data stays visible
     }
   }, []);
 

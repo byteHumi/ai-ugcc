@@ -47,11 +47,15 @@ export function usePosts() {
     const ac = new AbortController();
     abortRef.current = ac;
 
+    const timeout = setTimeout(() => ac.abort(), 15_000);
+
     try {
       let endpoint = '/api/late/posts?limit=50';
       if (filterRef.current !== 'all') endpoint += `&status=${filterRef.current}`;
       const res = await fetch(endpoint, { signal: ac.signal });
+      clearTimeout(timeout);
       if (!mountedRef.current) return;
+      if (!res.ok) return; // silently skip bad responses
       const data = await res.json();
       const arr: Post[] = data.posts || [];
 
@@ -66,9 +70,9 @@ export function usePosts() {
         setPosts(arr);
         setCachedPosts(arr, filterRef.current);
       }
-    } catch (e: unknown) {
-      if (e instanceof DOMException && e.name === 'AbortError') return;
-      console.error('Failed to load posts:', e);
+    } catch {
+      clearTimeout(timeout);
+      // Silently ignore — cached data stays visible
     } finally {
       if (mountedRef.current) setIsLoadingPage(false);
     }

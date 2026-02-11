@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Send, Download, Loader2, AlertCircle, ChevronLeft, ChevronRight, Trash2, RotateCw, ExternalLink } from 'lucide-react';
 import { FaTiktok, FaInstagram, FaYoutube, FaXTwitter } from 'react-icons/fa6';
@@ -36,6 +36,30 @@ export default function PostList({
   const [page, setPage] = useState(1);
   const [isRetrying, setIsRetrying] = useState<string | null>(null);
   const [isDeletingPost, setIsDeletingPost] = useState<string | null>(null);
+  const [publishingPost, setPublishingPost] = useState<{ caption?: string; platforms?: string[] } | null>(null);
+
+  // Check for a just-submitted post
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('ai-ugc-new-post');
+      if (raw) {
+        setPublishingPost(JSON.parse(raw));
+      }
+    } catch {}
+  }, []);
+
+  // Dismiss the placeholder once a real active post appears in the list
+  useEffect(() => {
+    if (!publishingPost) return;
+    const hasNewActive = posts.some((p) => {
+      const s = p.platforms?.[0]?.status || '';
+      return s === 'publishing' || s === 'processing' || s === 'in_progress' || s === 'pending' || s === 'published';
+    });
+    if (hasNewActive) {
+      setPublishingPost(null);
+      try { sessionStorage.removeItem('ai-ugc-new-post'); } catch {}
+    }
+  }, [posts, publishingPost]);
 
   const livePost = selectedPost ? posts.find((p) => p._id === selectedPost._id) ?? selectedPost : null;
 
@@ -50,11 +74,15 @@ export default function PostList({
     return (
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-          <div key={i} className="animate-pulse overflow-hidden rounded-xl">
-            <div className="bg-[var(--background)]" style={{ aspectRatio: '9/16' }} />
-            <div className="bg-[var(--surface)] p-2.5 space-y-1.5">
-              <div className="h-3 w-3/4 rounded bg-[var(--background)]" />
-              <div className="h-2.5 w-1/2 rounded bg-[var(--background)]" />
+          <div key={i} className="animate-pulse overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm">
+            <div className="bg-[var(--accent)]" style={{ aspectRatio: '9/16' }}>
+              <div className="flex h-full items-center justify-center">
+                <div className="h-6 w-6 rounded-full bg-[var(--border)]" />
+              </div>
+            </div>
+            <div className="p-2.5 space-y-1.5">
+              <div className="h-3 w-3/4 rounded bg-[var(--accent)]" />
+              <div className="h-2.5 w-1/2 rounded bg-[var(--accent)]" />
             </div>
           </div>
         ))}
@@ -77,6 +105,44 @@ export default function PostList({
   return (
     <>
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+        {/* Publishing placeholder card */}
+        {publishingPost && safePage === 1 && (
+          <div className="overflow-hidden rounded-xl border border-amber-200 bg-[var(--surface)] shadow ring-1 ring-amber-300 dark:border-amber-900/50">
+            <div
+              className="relative w-full bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30"
+              style={{ aspectRatio: '9/16' }}
+            >
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                <div className="relative">
+                  <div className="h-10 w-10 rounded-full border-2 border-amber-200 border-t-amber-500 animate-spin" />
+                </div>
+                <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Publishing...</span>
+              </div>
+              <div className="absolute left-1.5 top-1.5">
+                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1.5 text-[11px] font-bold text-white shadow-sm">
+                  <Spinner className="h-3.5 w-3.5" />
+                  Publishing
+                </span>
+              </div>
+              {publishingPost.platforms && publishingPost.platforms.length > 0 && (
+                <div className="absolute right-1.5 top-1.5 flex gap-1">
+                  {publishingPost.platforms.map((p) => (
+                    <span key={p} className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/50 shadow-sm backdrop-blur-sm">
+                      {p === 'tiktok' && <FaTiktok className="h-4 w-4" style={{ color: '#00f2ea' }} />}
+                      {p === 'instagram' && <FaInstagram className="h-4 w-4" style={{ color: '#E1306C' }} />}
+                      {p === 'youtube' && <FaYoutube className="h-4 w-4" style={{ color: '#FF0000' }} />}
+                      {p === 'twitter' && <FaXTwitter className="h-4 w-4 text-white" />}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-2.5">
+              <p className="truncate text-xs font-medium">{publishingPost.caption || 'New post'}</p>
+              <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">Just now</p>
+            </div>
+          </div>
+        )}
         {paginatedPosts.map((post) => {
           const status = postStatus(post);
           const thumbnail = post.mediaItems?.[0]?.url || post.mediaItems?.[0]?.thumbnailUrl;
@@ -87,7 +153,7 @@ export default function PostList({
             <div
               key={post._id}
               onClick={() => setSelectedPost(post)}
-              className={`group cursor-pointer overflow-hidden rounded-xl shadow-sm transition-all hover:shadow-lg ${
+              className={`group cursor-pointer overflow-hidden rounded-xl border border-black/[0.08] bg-[var(--surface)] shadow transition-all hover:shadow-lg dark:border-[var(--border)] ${
                 isScheduled ? 'ring-1 ring-blue-300' : isActive ? 'ring-1 ring-amber-300' : ''
               }`}
             >

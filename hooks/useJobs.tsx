@@ -5,9 +5,26 @@ import type { Job } from '@/types';
 
 const ACTIVE_POLL_INTERVAL = 1_500;  // 1.5s when jobs are running
 const IDLE_POLL_INTERVAL   = 30_000; // 30s baseline
+const FETCH_TIMEOUT        = 15_000; // 15s max per request
+const CACHE_KEY = 'ai-ugc-jobs';
+
+function getCachedJobs(): Job[] {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function setCachedJobs(jobs: Job[]) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(jobs)); } catch {}
+}
 
 function useJobsInternal() {
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<Job[]>(getCachedJobs);
   const lastSnapshotRef = useRef('');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -18,20 +35,26 @@ function useJobsInternal() {
     const ac = new AbortController();
     abortRef.current = ac;
 
+    // Abort after timeout to prevent hanging
+    const timeout = setTimeout(() => ac.abort(), FETCH_TIMEOUT);
+
     try {
       const res = await fetch('/api/jobs', { signal: ac.signal });
+      clearTimeout(timeout);
       if (!mountedRef.current) return;
+      if (!res.ok) return; // silently skip bad responses
       const data = await res.json();
-      const arr = Array.isArray(data) ? data : [];
+      const arr: Job[] = Array.isArray(data) ? data : [];
 
-      const snapshot = arr.map((j: Job) => `${j.id}:${j.status}:${j.step}`).join('|');
+      const snapshot = arr.map((j) => `${j.id}:${j.status}:${j.step}`).join('|');
       if (snapshot !== lastSnapshotRef.current) {
         lastSnapshotRef.current = snapshot;
         setJobs(arr);
+        setCachedJobs(arr);
       }
-    } catch (e: unknown) {
-      if (e instanceof DOMException && e.name === 'AbortError') return;
-      console.error('Failed to load jobs:', e);
+    } catch {
+      clearTimeout(timeout);
+      // Silently ignore — cached data stays visible
     }
   }, []);
 

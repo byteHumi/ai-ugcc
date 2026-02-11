@@ -141,6 +141,15 @@ export default function CreatePostModal({
         body.timezone = postTimezone;
       }
 
+      // Store new post info so PostList shows a placeholder instantly
+      try {
+        sessionStorage.setItem('ai-ugc-new-post', JSON.stringify({
+          caption: postForm.caption,
+          platforms: platformTargets.map((t) => t.platform),
+          publishMode,
+        }));
+      } catch {}
+
       onClose();
       const toastMsg = publishMode === 'now'
         ? `Publishing to ${platformTargets.length} account${platformTargets.length > 1 ? 's' : ''}...`

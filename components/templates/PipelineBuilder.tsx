@@ -59,7 +59,9 @@ function getStepSummary(step: MiniAppStep): string {
     }
     case 'bg-music': {
       const c = step.config as BgMusicConfig;
-      return `Volume ${c.volume}%${c.trackId ? '' : ' \u00b7 No track'}`;
+      const count = c.applyToSteps?.length ?? 0;
+      const target = count === 0 ? 'All steps' : `${count} step${count > 1 ? 's' : ''}`;
+      return `${target} \u00b7 ${c.volume}%${c.trackId ? '' : ' \u00b7 No track'}`;
     }
     case 'attach-video': {
       const c = step.config as AttachVideoConfig;
