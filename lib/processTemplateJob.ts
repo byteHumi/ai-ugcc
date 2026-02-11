@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { fal } from '@fal-ai/client';
-import { getTemplateJob, updateTemplateJob, getModelImage } from '@/lib/db';
+import { getTemplateJob, updateTemplateJob, getModelImage, updatePipelineBatchProgress } from '@/lib/db';
 import { uploadVideoFromPath, downloadToBuffer as gcsDownloadToBuffer } from '@/lib/storage';
 import { downloadFile, getVideoDuration, trimVideo } from '@/lib/serverUtils';
 import { addTextOverlay, mixAudio, concatVideos } from '@/lib/ffmpegOps';
@@ -420,12 +420,31 @@ export async function processTemplateJob(jobId: string): Promise<void> {
       stepResults,
       completedAt: new Date().toISOString(),
     });
+
+    // Update pipeline batch progress if this job belongs to a batch
+    if (job.pipelineBatchId) {
+      try {
+        await updatePipelineBatchProgress(job.pipelineBatchId);
+      } catch (e) {
+        console.error('Failed to update pipeline batch progress:', e);
+      }
+    }
   } catch (error) {
     await updateTemplateJob(jobId, {
       status: 'failed',
       step: 'Failed',
       error: error instanceof Error ? error.message : String(error),
     });
+
+    // Update pipeline batch progress on failure too
+    const failedJob = await getTemplateJob(jobId);
+    if (failedJob?.pipelineBatchId) {
+      try {
+        await updatePipelineBatchProgress(failedJob.pipelineBatchId);
+      } catch (e) {
+        console.error('Failed to update pipeline batch progress:', e);
+      }
+    }
   } finally {
     // Clean up all temp files
     for (const f of tempFiles) {

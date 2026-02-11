@@ -1,12 +1,13 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { X, Video, Type, Music, Film, Upload } from 'lucide-react';
-import type { MiniAppStep, MiniAppType, VideoGenConfig as VGC, TextOverlayConfig as TOC, BgMusicConfig as BMC, AttachVideoConfig as AVC } from '@/types';
+import { X, Video, Type, Music, Film, Upload, Layers } from 'lucide-react';
+import type { MiniAppStep, MiniAppType, VideoGenConfig as VGC, TextOverlayConfig as TOC, BgMusicConfig as BMC, AttachVideoConfig as AVC, BatchVideoGenConfig as BVGC } from '@/types';
 import VideoGenConfig from './VideoGenConfig';
 import TextOverlayConfig from './TextOverlayConfig';
 import BgMusicConfig from './BgMusicConfig';
 import AttachVideoConfig from './AttachVideoConfig';
+import BatchVideoGenConfig from './BatchVideoGenConfig';
 import TextOverlayPreview from './TextOverlayPreview';
 
 const nodeMeta: Record<MiniAppType, { label: string; icon: typeof Video; iconBg: string; iconColor: string }> = {
@@ -14,6 +15,7 @@ const nodeMeta: Record<MiniAppType, { label: string; icon: typeof Video; iconBg:
   'text-overlay':     { label: 'Text Overlay',     icon: Type,  iconBg: '#eff6ff', iconColor: '#2563eb' },
   'bg-music':         { label: 'Background Music', icon: Music, iconBg: '#ecfdf5', iconColor: '#059669' },
   'attach-video':     { label: 'Attach Video',     icon: Film,  iconBg: '#fff7ed', iconColor: '#ea580c' },
+  'batch-video-generation': { label: 'Batch Video Gen', icon: Layers, iconBg: '#fef3c7', iconColor: '#d97706' },
 };
 
 type SourceConfig = {
@@ -184,6 +186,7 @@ export default function NodeConfigPanel({
             />
           )}
           {step.type === 'video-generation' && <VideoGenConfig config={step.config as VGC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} sourceDuration={sourceDuration} />}
+          {step.type === 'batch-video-generation' && <BatchVideoGenConfig config={step.config as BVGC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} sourceDuration={sourceDuration} />}
           {step.type === 'text-overlay' && <TextOverlayConfig config={step.config as TOC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} />}
           {step.type === 'bg-music' && <BgMusicConfig config={step.config as BMC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} steps={steps} currentStepId={step.id} />}
           {step.type === 'attach-video' && <AttachVideoConfig config={step.config as AVC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} steps={steps} currentStepId={step.id} />}

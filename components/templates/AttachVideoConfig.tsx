@@ -1,12 +1,13 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Upload, X, Video, Type, Music, Film, Link } from 'lucide-react';
+import { Upload, X, Video, Type, Music, Film, Link, Layers } from 'lucide-react';
 import { useVideoUpload } from '@/hooks/useVideoUpload';
 import type { AttachVideoConfig as AVC, MiniAppStep, MiniAppType } from '@/types';
 
 const stepIcons: Record<MiniAppType, typeof Video> = {
   'video-generation': Video,
+  'batch-video-generation': Layers,
   'text-overlay': Type,
   'bg-music': Music,
   'attach-video': Film,
@@ -14,6 +15,7 @@ const stepIcons: Record<MiniAppType, typeof Video> = {
 
 const stepLabels: Record<MiniAppType, string> = {
   'video-generation': 'Video Generation',
+  'batch-video-generation': 'Batch Video Gen',
   'text-overlay': 'Text Overlay',
   'bg-music': 'Background Music',
   'attach-video': 'Attach Video',

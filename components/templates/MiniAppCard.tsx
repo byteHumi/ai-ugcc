@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, ChevronDown, ChevronUp, Trash2, Video, Type, Music, Film } from 'lucide-react';
+import { GripVertical, ChevronDown, ChevronUp, Trash2, Video, Type, Music, Film, Layers } from 'lucide-react';
 import type { MiniAppStep, MiniAppType, VideoGenConfig as VGC, TextOverlayConfig as TOC, BgMusicConfig as BMC, AttachVideoConfig as AVC } from '@/types';
 import VideoGenConfig from './VideoGenConfig';
 import TextOverlayConfig from './TextOverlayConfig';
@@ -12,6 +12,7 @@ import AttachVideoConfig from './AttachVideoConfig';
 
 const miniAppMeta: Record<MiniAppType, { label: string; icon: typeof Video; color: string }> = {
   'video-generation': { label: 'Video Generation', icon: Video, color: 'text-purple-600' },
+  'batch-video-generation': { label: 'Batch Video Gen', icon: Layers, color: 'text-amber-600' },
   'text-overlay': { label: 'Text Overlay', icon: Type, color: 'text-blue-600' },
   'bg-music': { label: 'Background Music', icon: Music, color: 'text-green-600' },
   'attach-video': { label: 'Attach Video', icon: Film, color: 'text-orange-600' },

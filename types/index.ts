@@ -71,7 +71,7 @@ export type Batch = {
 
 // Templates / Pipeline types
 
-export type MiniAppType = 'video-generation' | 'text-overlay' | 'bg-music' | 'attach-video';
+export type MiniAppType = 'video-generation' | 'batch-video-generation' | 'text-overlay' | 'bg-music' | 'attach-video';
 
 export type VideoGenMode = 'motion-control' | 'subtle-animation';
 
@@ -126,10 +126,29 @@ export type AttachVideoConfig = {
   tiktokUrl?: string;
 };
 
+export type BatchImageEntry = {
+  imageId?: string;
+  imageUrl?: string;
+  filename?: string;
+};
+
+export type BatchVideoGenConfig = {
+  mode: VideoGenMode;
+  images: BatchImageEntry[];
+  modelId?: string;
+  prompt?: string;
+  aspectRatio?: string;
+  duration?: string;
+  generateAudio?: boolean;
+  negativePrompt?: string;
+  resolution?: '720p' | '1080p' | '4k';
+  maxSeconds?: number;
+};
+
 export type MiniAppStep = {
   id: string;
   type: MiniAppType;
-  config: VideoGenConfig | TextOverlayConfig | BgMusicConfig | AttachVideoConfig;
+  config: VideoGenConfig | TextOverlayConfig | BgMusicConfig | AttachVideoConfig | BatchVideoGenConfig;
   enabled: boolean;
 };
 
@@ -155,7 +174,20 @@ export type TemplateJob = {
   outputUrl?: string;
   signedUrl?: string;
   stepResults?: StepResult[];
+  pipelineBatchId?: string;
   error?: string;
+  createdAt: string;
+  completedAt?: string;
+};
+
+export type PipelineBatch = {
+  id: string;
+  name: string;
+  status: string;
+  totalJobs: number;
+  completedJobs: number;
+  failedJobs: number;
+  pipeline: MiniAppStep[];
   createdAt: string;
   completedAt?: string;
 };

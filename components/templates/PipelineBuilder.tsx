@@ -12,11 +12,11 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   GripVertical, Plus, Video, Subtitles, Music, Film, Upload, Play,
-  ChevronRight, Eye, EyeOff, Trash2, ZoomIn, ZoomOut, Maximize2,
+  ChevronRight, Eye, EyeOff, Trash2, ZoomIn, ZoomOut, Maximize2, Layers,
 } from 'lucide-react';
 import type {
   MiniAppStep, MiniAppType,
-  VideoGenConfig, TextOverlayConfig, BgMusicConfig, AttachVideoConfig,
+  VideoGenConfig, TextOverlayConfig, BgMusicConfig, AttachVideoConfig, BatchVideoGenConfig,
 } from '@/types';
 import MiniAppPicker from './MiniAppPicker';
 import Modal from '@/components/ui/Modal';
@@ -38,6 +38,7 @@ const nodeMeta: Record<MiniAppType, {
   'text-overlay':     { label: 'Text Overlay',     icon: Subtitles, iconBg: 'var(--accent)',                iconColor: 'var(--primary)' },
   'bg-music':         { label: 'Background Music', icon: Music,  iconBg: 'rgba(212, 105, 142, 0.10)',    iconColor: 'var(--primary)' },
   'attach-video':     { label: 'Attach Video',     icon: Film,   iconBg: 'rgba(232, 114, 154, 0.10)',    iconColor: '#e8729a' },
+  'batch-video-generation': { label: 'Batch Video Gen', icon: Layers, iconBg: 'rgba(217, 119, 6, 0.10)', iconColor: '#d97706' },
 };
 
 /* ── Helpers ───────────────────────────────────────────────────── */
@@ -71,6 +72,11 @@ function getStepSummary(step: MiniAppStep): string {
       if (c.videoUrl) return `${pos} \u00b7 Uploaded`;
       return `${pos} clip`;
     }
+    case 'batch-video-generation': {
+      const c = step.config as BatchVideoGenConfig;
+      const modeLabel = c.mode === 'motion-control' ? 'Motion' : 'Subtle';
+      return `${c.images.length} image${c.images.length !== 1 ? 's' : ''} \u00b7 ${modeLabel}`;
+    }
     default: return '';
   }
 }
@@ -81,6 +87,7 @@ function isStepConfigured(step: MiniAppStep): boolean {
     case 'bg-music':         return !!(step.config as BgMusicConfig).trackId || !!(step.config as BgMusicConfig).customTrackUrl;
     case 'attach-video':     return !!(step.config as AttachVideoConfig).videoUrl || !!(step.config as AttachVideoConfig).sourceStepId || !!(step.config as AttachVideoConfig).tiktokUrl;
     case 'video-generation': return !!(step.config as VideoGenConfig).imageId || !!(step.config as VideoGenConfig).imageUrl;
+    case 'batch-video-generation': return (step.config as BatchVideoGenConfig).images.length > 0;
     default: return false;
   }
 }

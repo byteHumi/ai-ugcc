@@ -1,7 +1,7 @@
 'use client';
 
-import { Video, Type, Music, Film } from 'lucide-react';
-import type { MiniAppType, MiniAppStep, VideoGenConfig, TextOverlayConfig, BgMusicConfig, AttachVideoConfig } from '@/types';
+import { Video, Type, Music, Film, Layers } from 'lucide-react';
+import type { MiniAppType, MiniAppStep, VideoGenConfig, TextOverlayConfig, BgMusicConfig, AttachVideoConfig, BatchVideoGenConfig } from '@/types';
 
 const miniApps: {
   type: MiniAppType;
@@ -15,11 +15,13 @@ const miniApps: {
   { type: 'text-overlay',     label: 'Text Overlay',     description: 'Styled text at any position',    icon: Type,  iconBg: '#eff6ff', iconColor: '#2563eb' },
   { type: 'bg-music',         label: 'Background Music', description: 'Mix audio with fade control',    icon: Music, iconBg: '#ecfdf5', iconColor: '#059669' },
   { type: 'attach-video',     label: 'Attach Video',     description: 'Prepend or append a clip',       icon: Film,  iconBg: '#fff7ed', iconColor: '#ea580c' },
+  { type: 'batch-video-generation', label: 'Batch Video Gen', description: 'Generate videos from multiple images', icon: Layers, iconBg: '#fef3c7', iconColor: '#d97706' },
 ];
 
-function createDefaultConfig(type: MiniAppType): VideoGenConfig | TextOverlayConfig | BgMusicConfig | AttachVideoConfig {
+function createDefaultConfig(type: MiniAppType): VideoGenConfig | TextOverlayConfig | BgMusicConfig | AttachVideoConfig | BatchVideoGenConfig {
   switch (type) {
     case 'video-generation': return { mode: 'motion-control' } as VideoGenConfig;
+    case 'batch-video-generation': return { mode: 'motion-control', images: [] } as BatchVideoGenConfig;
     case 'text-overlay':     return { text: '', position: 'bottom', textAlign: 'center', fontSize: 48, fontColor: '#FFFFFF', entireVideo: true } as TextOverlayConfig;
     case 'bg-music':         return { volume: 30 } as BgMusicConfig;
     case 'attach-video':     return { videoUrl: '', position: 'after' } as AttachVideoConfig;

@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import Spinner from '@/components/ui/Spinner';
 import Modal from '@/components/ui/Modal';
-import type { MiniAppStep, VideoGenConfig, TextOverlayConfig, BgMusicConfig, AttachVideoConfig } from '@/types';
+import type { MiniAppStep, VideoGenConfig, TextOverlayConfig, BgMusicConfig, AttachVideoConfig, BatchVideoGenConfig } from '@/types';
 
 const DRAFT_KEY = 'ai-ugc-pipeline-draft';
 
@@ -187,8 +187,10 @@ export default function TemplatesPage() {
     }
 
     const firstStep = enabledSteps[0];
-    const needsInputVideo = !(firstStep.type === 'video-generation'
-      && (firstStep.config as { mode?: string }).mode === 'subtle-animation');
+    const needsInputVideo = !(
+      (firstStep.type === 'video-generation' && (firstStep.config as { mode?: string }).mode === 'subtle-animation') ||
+      (firstStep.type === 'batch-video-generation' && (firstStep.config as { mode?: string }).mode === 'subtle-animation')
+    );
 
     if (needsInputVideo) {
       if (videoSource === 'tiktok' && !tiktokUrl) {
@@ -210,6 +212,11 @@ export default function TemplatesPage() {
         case 'video-generation': {
           const c = s.config as VideoGenConfig;
           if (!c.imageId && !c.imageUrl) errors.set(s.id, 'Select a model image');
+          break;
+        }
+        case 'batch-video-generation': {
+          const c = s.config as BatchVideoGenConfig;
+          if (!c.images || c.images.length === 0) errors.set(s.id, 'Select at least one image');
           break;
         }
         case 'text-overlay': {
@@ -258,13 +265,16 @@ export default function TemplatesPage() {
       }
 
       const data = await res.json();
-      // Store new job so /jobs page shows it instantly
-      try {
-        sessionStorage.setItem('ai-ugc-new-job', JSON.stringify(data));
-        sessionStorage.removeItem(DRAFT_KEY);
-      } catch {}
-      showToast('Pipeline started!', 'success');
-      router.push('/jobs');
+      const isBatch = data.isBatch === true;
+      // Store new job so /jobs page shows it instantly (only for single pipelines)
+      if (!isBatch) {
+        try {
+          sessionStorage.setItem('ai-ugc-new-job', JSON.stringify(data));
+        } catch {}
+      }
+      try { sessionStorage.removeItem(DRAFT_KEY); } catch {}
+      showToast(isBatch ? `Batch started with ${data.totalJobs} pipeline runs!` : 'Pipeline started!', 'success');
+      router.push(isBatch ? '/jobs?tab=batch' : '/jobs');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to start pipeline', 'error');
     } finally {
