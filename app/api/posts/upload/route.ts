@@ -224,7 +224,6 @@ export async function POST(request: NextRequest) {
             title: (caption || 'Untitled Video').split('\n')[0].slice(0, 100),
             visibility: 'public',
             madeForKids: false,
-            containsSyntheticMedia: false,
             categoryId: '22', // People & Blogs
           },
         };
@@ -396,10 +395,19 @@ export async function POST(request: NextRequest) {
     });
 
     const status = isLateError ? Math.min((error as LateApiError).status || 500, 599) : 500;
+    const lateBody = isLateError ? (error as LateApiError).body : undefined;
+
+    // Extract a human-readable error message
+    let errorMessage = (error as Error).message;
+    if (isLateError && lateBody && typeof lateBody === 'object') {
+      const body = lateBody as Record<string, unknown>;
+      errorMessage = (body.error as string) || (body.message as string) || errorMessage;
+    }
+
     return NextResponse.json(
       {
-        error: (error as Error).message,
-        details: isLateError ? (error as LateApiError).body : undefined,
+        error: errorMessage,
+        details: lateBody,
         timing: { totalMs },
       },
       { status: status || 500 }

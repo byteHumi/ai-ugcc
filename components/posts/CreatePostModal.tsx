@@ -173,8 +173,11 @@ export default function CreatePostModal({
       } else {
         const errorMsg = data.error || 'Failed to post';
         const details = data.details;
-        showToast(details?.error || errorMsg, 'error');
-        console.error('[Submit Post] Error:', data);
+        const detailMsg = details && typeof details === 'object'
+          ? (details.error || details.message || '')
+          : '';
+        showToast(detailMsg || errorMsg, 'error');
+        console.error('[Submit Post] Error:', JSON.stringify(data, null, 2));
       }
     } catch (err) {
       showToast('Error: ' + (err as Error).message, 'error');
