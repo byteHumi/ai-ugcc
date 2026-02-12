@@ -43,11 +43,14 @@ export async function GET(
         };
         const connectUrl = data.url ?? data.connectUrl ?? data.authUrl ?? data.authorization_url;
         if (connectUrl) return NextResponse.json({ connectUrl });
+
+        console.error('Late API connect: no URL in response', JSON.stringify(data));
+        return NextResponse.json({ error: 'No connect URL returned from API' }, { status: 500 });
       }
 
       const errorText = await connectRes.text();
       console.error('Late API connect error:', connectRes.status, errorText);
-      return NextResponse.json({ error: 'Failed to get connect URL' }, { status: 500 });
+      return NextResponse.json({ error: `Connect failed (${connectRes.status}): ${errorText}` }, { status: connectRes.status });
     } finally {
       clearTimeout(timeoutId);
     }

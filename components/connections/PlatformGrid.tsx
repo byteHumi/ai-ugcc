@@ -154,7 +154,11 @@ export default function PlatformGrid({
                         if (data.connectUrl) {
                           window.open(data.connectUrl, '_blank');
                           showToast('Complete authorization in the new window, then refresh', 'success');
+                        } else {
+                          showToast(data.error || `Failed to get ${label} connect URL`, 'error');
                         }
+                      } catch {
+                        showToast(`Failed to connect ${label}`, 'error');
                       } finally {
                         setIsConnecting(null);
                       }
