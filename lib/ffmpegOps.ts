@@ -638,7 +638,7 @@ export function mixAudio(
     hasAudio = false;
   }
 
-  if (hasAudio) {
+  if (hasAudio && config.audioMode !== 'replace') {
     execFileSync(FFMPEG, [
       '-y',
       '-i', inputPath,

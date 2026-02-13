@@ -89,6 +89,9 @@ export type VideoGenConfig = {
   negativePrompt?: string;
   // Veo-only
   resolution?: '720p' | '1080p' | '4k';
+  // First Frame Generation
+  firstFrameEnabled?: boolean;
+  extractedFrameUrl?: string;      // GCS URL of the picked extracted frame
 };
 
 export type TextOverlayConfig = {
@@ -117,6 +120,8 @@ export type BgMusicConfig = {
   fadeIn?: number;
   fadeOut?: number;
   applyToSteps?: string[]; // step IDs to apply music to; empty/undefined = all video steps
+  audioModePerStep?: Record<string, 'replace' | 'mix'>; // per-step audio mode
+  audioMode?: 'replace' | 'mix'; // effective mode used by backend (derived from audioModePerStep)
 };
 
 export type AttachVideoConfig = {
@@ -130,6 +135,10 @@ export type BatchImageEntry = {
   imageId?: string;
   imageUrl?: string;
   filename?: string;
+  // First Frame Generation
+  originalImageUrl?: string;     // Original model image URL (preserved for regeneration)
+  originalImageId?: string;      // Original model image ID (preserved for regeneration)
+  generatedOptions?: string[];   // GCS URLs of the 2 generated options (for UI display)
 };
 
 export type BatchVideoGenConfig = {
@@ -143,6 +152,9 @@ export type BatchVideoGenConfig = {
   negativePrompt?: string;
   resolution?: '720p' | '1080p' | '4k';
   maxSeconds?: number;
+  // First Frame Generation (shared across all batch entries)
+  firstFrameEnabled?: boolean;
+  extractedFrameUrl?: string;    // Single extracted frame, used for all
 };
 
 export type MiniAppStep = {

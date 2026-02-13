@@ -1,13 +1,14 @@
 'use client';
 
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Upload, Music, Video, Film, Loader2, Play, Pause, Volume2, VolumeX, ChevronDown } from 'lucide-react';
+import { Upload, Music, Video, Film, Layers, Loader2, Play, Pause, Volume2, VolumeX, ChevronDown } from 'lucide-react';
 import { useMusicTracks } from '@/hooks/useMusicTracks';
 import type { BgMusicConfig as BMC, MiniAppStep, MusicTrack } from '@/types';
 
 const stepMeta: Record<string, { icon: typeof Video; label: string }> = {
-  'video-generation': { icon: Video, label: 'Video Generation' },
-  'attach-video':     { icon: Film,  label: 'Attach Video' },
+  'video-generation':       { icon: Video,  label: 'Video Generation' },
+  'batch-video-generation': { icon: Layers, label: 'Batch Video Gen' },
+  'attach-video':           { icon: Film,   label: 'Attach Video' },
 };
 
 function formatDuration(sec: number): string {
@@ -38,7 +39,7 @@ export default function BgMusicConfig({
 
   // Only show video-generation and attach-video steps (exclude self)
   const targetSteps = steps.filter(
-    (s) => s.id !== currentStepId && (s.type === 'video-generation' || s.type === 'attach-video'),
+    (s) => s.id !== currentStepId && (s.type === 'video-generation' || s.type === 'batch-video-generation' || s.type === 'attach-video'),
   );
 
   const selectedIds = config.applyToSteps ?? [];
@@ -205,27 +206,57 @@ export default function BgMusicConfig({
               const Icon = meta.icon;
               const isChecked = isAllMode || selectedIds.includes(s.id);
               const stepIndex = steps.findIndex((st) => st.id === s.id);
+              const stepAudioMode = config.audioModePerStep?.[s.id] ?? 'mix';
 
               return (
-                <button
-                  key={s.id}
-                  onClick={() => selectStep(s.id)}
-                  className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-all duration-150 ${
-                    isChecked
-                      ? 'border-[var(--primary)] bg-[var(--accent)]'
-                      : 'border-[var(--border)] hover:border-[var(--accent-border)] hover:bg-[var(--accent)]'
-                  }`}
-                >
-                  <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                    isChecked ? 'border-[var(--primary)] bg-[var(--primary)]' : 'border-[var(--border)]'
-                  }`}>
-                    {isChecked && <div className="h-2 w-2 rounded-sm bg-white" />}
-                  </div>
-                  <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: isChecked ? 'var(--primary)' : 'var(--text-muted)' }} />
-                  <span className={`text-xs font-medium ${isChecked ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'}`}>
-                    {meta.label} <span className="text-[var(--text-muted)]">#{stepIndex + 1}</span>
-                  </span>
-                </button>
+                <div key={s.id} className={`rounded-lg border transition-all duration-150 ${
+                  isChecked
+                    ? 'border-[var(--primary)] bg-[var(--accent)]'
+                    : 'border-[var(--border)] hover:border-[var(--accent-border)] hover:bg-[var(--accent)]'
+                }`}>
+                  <button
+                    onClick={() => selectStep(s.id)}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left"
+                  >
+                    <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                      isChecked ? 'border-[var(--primary)] bg-[var(--primary)]' : 'border-[var(--border)]'
+                    }`}>
+                      {isChecked && <div className="h-2 w-2 rounded-sm bg-white" />}
+                    </div>
+                    <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: isChecked ? 'var(--primary)' : 'var(--text-muted)' }} />
+                    <span className={`text-xs font-medium ${isChecked ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'}`}>
+                      {meta.label} <span className="text-[var(--text-muted)]">#{stepIndex + 1}</span>
+                    </span>
+                  </button>
+
+                  {/* Per-step audio mode toggle */}
+                  {isChecked && (
+                    <div className="flex items-center gap-1.5 px-3 pb-2">
+                      <span className="text-[11px] text-[var(--text-muted)]">Audio:</span>
+                      <div className="flex gap-0.5 rounded-md border border-[var(--border)] bg-[var(--background)] p-0.5">
+                        {(['mix', 'replace'] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onChange({
+                                ...config,
+                                audioModePerStep: { ...config.audioModePerStep, [s.id]: mode },
+                              });
+                            }}
+                            className={`rounded px-2 py-0.5 text-[11px] font-medium transition-all duration-150 ${
+                              stepAudioMode === mode
+                                ? 'bg-[var(--primary)] text-white shadow-sm'
+                                : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                            }`}
+                          >
+                            {mode === 'mix' ? 'Mix' : 'Replace'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
