@@ -530,7 +530,21 @@ export async function processJob(
 
     console.log(`[FAL] Job ${jobId}: submitted to FAL, request_id=${request_id}`);
 
-    // Wait for FAL to complete (may timeout if Lambda dies, but request_id is saved)
+    // Wait for FAL to finish processing (polls status until COMPLETED)
+    await fal.queue.subscribeToStatus(falEndpoint, {
+      requestId: request_id,
+      logs: true,
+      onQueueUpdate: async (update) => {
+        if (update.status === 'IN_QUEUE') {
+          const pos = 'queue_position' in update ? (update as { queue_position?: number }).queue_position : undefined;
+          await updateJob(jobId, { step: `In queue (position: ${pos ?? '...'})` });
+        } else if (update.status === 'IN_PROGRESS') {
+          await updateJob(jobId, { step: 'AI is generating your video...' });
+        }
+      },
+    });
+
+    // Now fetch the completed result
     const result = await fal.queue.result(falEndpoint, { requestId: request_id });
 
     const videoData = (result.data as { video?: { url?: string } })?.video ?? (result as { video?: { url?: string } }).video;
@@ -654,7 +668,21 @@ export async function processJobWithImage(
 
     console.log(`[FAL] Job ${jobId} (batch): submitted to FAL, request_id=${request_id}`);
 
-    // Wait for FAL to complete (request_id is saved for recovery if Lambda dies)
+    // Wait for FAL to finish processing
+    await fal.queue.subscribeToStatus(falEndpoint, {
+      requestId: request_id,
+      logs: true,
+      onQueueUpdate: async (update) => {
+        if (update.status === 'IN_QUEUE') {
+          const pos = 'queue_position' in update ? (update as { queue_position?: number }).queue_position : undefined;
+          await updateJob(jobId, { step: `In queue (position: ${pos ?? '...'})` });
+        } else if (update.status === 'IN_PROGRESS') {
+          await updateJob(jobId, { step: 'AI is generating your video...' });
+        }
+      },
+    });
+
+    // Now fetch the completed result
     const result = await fal.queue.result(falEndpoint, { requestId: request_id });
 
     const videoData = (result.data as { video?: { url?: string } })?.video ?? (result as { video?: { url?: string } }).video;

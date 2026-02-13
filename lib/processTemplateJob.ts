@@ -204,6 +204,12 @@ async function processStep(
 
         console.log(`[FAL] Template ${jobId} step ${stepIndex}: submitted Veo 3.1, request_id=${request_id}`);
 
+        // Wait for FAL to finish processing
+        await fal.queue.subscribeToStatus(falEndpoint, {
+          requestId: request_id,
+          logs: true,
+        });
+
         const result = await fal.queue.result(falEndpoint, { requestId: request_id });
 
         const videoData = (result.data as { video?: { url?: string } })?.video ?? (result as { video?: { url?: string } }).video;
@@ -261,6 +267,12 @@ async function processStep(
         });
 
         console.log(`[FAL] Template ${jobId} step ${stepIndex}: submitted Motion Control, request_id=${request_id}`);
+
+        // Wait for FAL to finish processing
+        await fal.queue.subscribeToStatus(falEndpoint, {
+          requestId: request_id,
+          logs: true,
+        });
 
         const result = await fal.queue.result(falEndpoint, { requestId: request_id });
 

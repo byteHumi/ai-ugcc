@@ -2,8 +2,8 @@
 
 import { useCallback, useRef } from 'react';
 
-const RECOVERY_COOLDOWN = 30_000;   // Don't call recovery more than once per 30s
-const STUCK_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+const RECOVERY_COOLDOWN = 60_000;           // Check every 1 minute
+const STUCK_THRESHOLD_MS = 5 * 60 * 1000;  // Consider stuck after 5 min (Vercel Lambda timeout)
 
 /**
  * Hook that provides a function to trigger stuck-job recovery.
