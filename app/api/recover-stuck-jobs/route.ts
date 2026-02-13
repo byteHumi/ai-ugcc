@@ -18,8 +18,9 @@ import fs from 'fs';
 import os from 'os';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 120; // 2 min — recovery downloads + re-uploads videos
 
-const STUCK_THRESHOLD_MINUTES = 10;
+const STUCK_THRESHOLD_MINUTES = 5; // Match Vercel Lambda maxDuration (300s)
 
 function getTempDir(): string {
   const dir = path.join(os.tmpdir(), 'ai-ugc-temp');

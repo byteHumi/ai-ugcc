@@ -6,19 +6,26 @@ import { initDatabase, createGeneratedImage } from '@/lib/db';
 
 export const maxDuration = 120;
 
-// Prompt A: Strict face-swap — model image (1) is the identity, scene frame (2) is background/pose only.
+// Prompt A: Strict face-swap — describe images by content, not position numbers.
 const PROMPT_A =
-  'FACE SWAP — Image 1 is the ONLY identity to use. Image 2 is ONLY a scene/pose reference. ' +
-  'Take the EXACT person from image 1 — their precise face, gender, age, ethnicity, skin tone, hair color, hair style, and every facial feature — and place them into the scene from image 2. ' +
-  'You MUST preserve the gender and full facial identity from image 1. Do NOT invent a new face. Do NOT use any face from image 2. ' +
-  'The output must show the same recognizable person from image 1, in the pose and environment of image 2. Photorealistic, consistent lighting.';
+  'FACE SWAP task. There are two reference images: one is a close-up portrait/headshot of a person, ' +
+  'and the other is a full scene showing a body pose and background environment. ' +
+  'Take the EXACT person from the portrait/headshot — their precise face, gender, age, ethnicity, skin tone, hair color, hair style, and every facial feature — ' +
+  'and place them into the scene/environment from the other image. ' +
+  'The person in the output MUST be identical and recognizable as the person from the portrait. ' +
+  'Keep the pose, camera angle, lighting, and background from the scene image. ' +
+  'Do NOT invent a new face. Do NOT blend or average the faces. The portrait face is the ONLY identity to use. ' +
+  'Photorealistic output, consistent lighting, natural skin texture.';
 
 // Prompt B: Same intent, alternative wording for diversity.
 const PROMPT_B =
-  'This is a face replacement task. Image 1 = source person (the face/identity to keep). Image 2 = target scene (the background, body pose, and camera angle to use). ' +
-  'Generate a photorealistic photo of the EXACT same person from image 1 standing in the setting of image 2. ' +
-  'CRITICAL: The person\'s face, gender, age, skin color, hair, and identity MUST match image 1 exactly. Do NOT generate a different person. Do NOT change their gender or features. ' +
-  'Only change the environment, clothing, and body position to match image 2. The result should look like a real photograph of the image 1 person in the image 2 location.';
+  'Replace the person in the scene/background image with the person from the portrait/headshot image. ' +
+  'The portrait provides the ONLY face identity to use: copy every facial feature, gender, age, ethnicity, skin color, and hairstyle exactly. ' +
+  'The scene/background image provides ONLY the environment, body position, camera angle, and clothing style. ' +
+  'CRITICAL: The output must look like a real photograph of the portrait person standing in the scene location. ' +
+  'Do NOT create a different person. Do NOT change the gender or facial features from the portrait. ' +
+  'Do NOT use any facial features from the scene image. Preserve photorealistic quality with natural lighting and skin detail.';
+
 
 // Detect actual image content type from buffer magic bytes
 function detectImageType(buf: Buffer): { contentType: string; ext: string } {
@@ -133,6 +140,7 @@ export async function POST(req: Request) {
         input: {
           image_urls: imageUrls,
           prompt: PROMPT_A,
+          limit_generations: true,
         },
         logs: true,
       }),
@@ -140,6 +148,7 @@ export async function POST(req: Request) {
         input: {
           image_urls: imageUrls,
           prompt: PROMPT_B,
+          limit_generations: true,
         },
         logs: true,
       }),
