@@ -27,7 +27,6 @@ const VEO_ASPECTS = [
   { value: 'auto', label: 'Auto' },
 ];
 
-const CONCURRENCY_LIMIT = 3;
 
 // ── Module-level cache: survives unmount/remount when switching pipeline steps ──
 type BatchCachedStepState = {
@@ -316,23 +315,21 @@ export default function BatchVideoGenConfig({
     }
   };
 
-  // Generate all first frames with concurrency limit
+  // Generate all first frames in parallel
   const handleGenerateAll = async () => {
     if (!config.extractedFrameUrl) return;
     setIsGeneratingAll(true);
     const total = config.images.length;
     setGenerateAllProgress({ done: 0, total });
 
-    const indices = Array.from({ length: total }, (_, i) => i);
     let done = 0;
-
-    // Process in batches of CONCURRENCY_LIMIT
-    for (let i = 0; i < indices.length; i += CONCURRENCY_LIMIT) {
-      const batch = indices.slice(i, i + CONCURRENCY_LIMIT);
-      await Promise.all(batch.map((idx) => generateFirstFrameForIndex(idx, config.images)));
-      done += batch.length;
-      setGenerateAllProgress({ done: Math.min(done, total), total });
-    }
+    const promises = config.images.map((_, idx) =>
+      generateFirstFrameForIndex(idx, config.images).then(() => {
+        done += 1;
+        setGenerateAllProgress({ done: Math.min(done, total), total });
+      })
+    );
+    await Promise.all(promises);
 
     setIsGeneratingAll(false);
   };
@@ -670,7 +667,7 @@ export default function BatchVideoGenConfig({
                     <label className="text-[11px] font-medium text-[var(--text-muted)]">2. Generate per image</label>
                     <button
                       onClick={handleGenerateAll}
-                      disabled={isGeneratingAll || generatingIndices.size > 0}
+                      disabled={isGeneratingAll}
                       className="rounded-lg bg-[var(--primary)] px-2.5 py-1 text-[11px] font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 disabled:opacity-50"
                     >
                       {isGeneratingAll ? (
@@ -705,7 +702,7 @@ export default function BatchVideoGenConfig({
                             {options.length === 0 && !isGenerating && (
                               <button
                                 onClick={() => generateFirstFrameForIndex(idx, config.images)}
-                                disabled={generatingIndices.size > 0 || isGeneratingAll}
+                                disabled={isGenerating || isGeneratingAll}
                                 className="rounded bg-[var(--primary)] px-2 py-0.5 text-[10px] font-medium text-[var(--primary-foreground)] transition-colors hover:opacity-90 disabled:opacity-50 shrink-0"
                               >
                                 Generate
@@ -717,7 +714,7 @@ export default function BatchVideoGenConfig({
                             {options.length > 0 && !isGenerating && (
                               <button
                                 onClick={() => generateFirstFrameForIndex(idx, config.images)}
-                                disabled={generatingIndices.size > 0 || isGeneratingAll}
+                                disabled={isGenerating || isGeneratingAll}
                                 className="flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)] transition-colors hover:bg-[var(--accent)] disabled:opacity-50 shrink-0"
                               >
                                 <RefreshCw className="h-2.5 w-2.5" />
