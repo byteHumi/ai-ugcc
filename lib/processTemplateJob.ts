@@ -287,13 +287,24 @@ async function processStep(
       const trackUrl = cfg.customTrackUrl || cfg.trackId;
       if (!trackUrl) throw new Error('No music track specified');
 
+      // Derive effective audioMode from per-step map:
+      // If any target step has 'replace', use 'replace' for the final mix
+      let effectiveAudioMode: 'replace' | 'mix' = 'mix';
+      if (cfg.audioModePerStep) {
+        const targetIds = cfg.applyToSteps?.length ? cfg.applyToSteps : Object.keys(cfg.audioModePerStep);
+        if (targetIds.some((id) => cfg.audioModePerStep![id] === 'replace')) {
+          effectiveAudioMode = 'replace';
+        }
+      }
+      const effectiveCfg = { ...cfg, audioMode: effectiveAudioMode };
+
       // Download the music track
       const audioPath = path.join(tempDir, `tpl-audio-${stepIndex}-${Date.now()}.mp3`);
       await downloadToLocal(trackUrl, audioPath);
 
       const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${Date.now()}.mp4`);
       try {
-        mixAudio(currentVideoPath, audioPath, outputPath, cfg);
+        mixAudio(currentVideoPath, audioPath, outputPath, effectiveCfg);
       } finally {
         try { fs.unlinkSync(audioPath); } catch {}
       }
