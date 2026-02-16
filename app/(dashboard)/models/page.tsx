@@ -11,7 +11,7 @@ import NewModelModal from '@/components/models/NewModelModal';
 import ModelDetailModal from '@/components/models/ModelDetailModal';
 
 export default function ModelsPage() {
-  const { models, modelImages, isLoadingPage, refresh, loadModelImages } = useModels();
+  const { models, modelImages, isLoadingPage, imagesLoading, refresh, loadModelImages } = useModels();
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [newModelModal, setNewModelModal] = useState(false);
   const [modelDetailModal, setModelDetailModal] = useState(false);
@@ -66,6 +66,7 @@ export default function ModelsPage() {
         onClose={() => setModelDetailModal(false)}
         model={selectedModel}
         modelImages={modelImages}
+        imagesLoading={imagesLoading}
         loadModelImages={loadModelImages}
         loadModels={refresh}
       />

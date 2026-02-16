@@ -308,10 +308,11 @@ export async function POST() {
     console.log(`[Recovery] Found ${stuckJobs.length} stuck jobs, ${stuckTemplateJobs.length} stuck template jobs`);
 
     // Process recovery for all stuck jobs
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const regularJobs = stuckJobs as Parameters<typeof recoverJob>[0][];
+    const templateJobs = stuckTemplateJobs as Parameters<typeof recoverTemplateJob>[0][];
     const results = await Promise.allSettled([
-      ...stuckJobs.map((job: any) => recoverJob(job)),
-      ...stuckTemplateJobs.map((job: any) => recoverTemplateJob(job)),
+      ...regularJobs.map((job) => recoverJob(job)),
+      ...templateJobs.map((job) => recoverTemplateJob(job)),
     ]);
 
     const summary = results.map((r) =>

@@ -42,7 +42,10 @@ export function useMusicTracks() {
   useEffect(() => {
     if (!fetchedRef.current) {
       fetchedRef.current = true;
-      loadTracks();
+      const timer = setTimeout(() => {
+        void loadTracks();
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [loadTracks]);
 

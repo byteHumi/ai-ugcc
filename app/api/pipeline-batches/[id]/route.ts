@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPipelineBatch, deletePipelineBatch, getTemplateJobsByBatchId, initDatabase } from '@/lib/db';
+import {
+  ensureDatabaseReady,
+  getPipelineBatch,
+  deletePipelineBatch,
+  getTemplateJobsByBatchId,
+  initDatabase,
+} from '@/lib/db';
 import { getCachedSignedUrl } from '@/lib/signedUrlCache';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +15,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await initDatabase();
+    await ensureDatabaseReady();
     const { id } = await params;
     const batch = await getPipelineBatch(id);
     if (!batch) {

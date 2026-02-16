@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getAllPipelineBatches, initDatabase } from '@/lib/db';
+import { ensureDatabaseReady, getAllPipelineBatches } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    await initDatabase();
+    await ensureDatabaseReady();
     const batches = await getAllPipelineBatches();
     return NextResponse.json(batches, {
       headers: { 'Cache-Control': 'private, max-age=3, stale-while-revalidate=20' },

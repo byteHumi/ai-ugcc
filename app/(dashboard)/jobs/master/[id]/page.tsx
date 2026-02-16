@@ -1,17 +1,14 @@
 'use client';
-
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { PipelineBatch, TemplateJob, MasterConfig } from '@/types';
 import { useToast } from '@/hooks/useToast';
-import { RefreshCw, Trash2, Loader2, CheckCircle2, XCircle, Clock, ArrowLeft, Crown, Square, CheckSquare, ThumbsUp } from 'lucide-react';
 import Spinner from '@/components/ui/Spinner';
-import ProgressBar from '@/components/ui/ProgressBar';
-import MasterJobCard from '@/components/templates/MasterJobCard';
-import MasterJobModal from '@/components/templates/MasterJobModal';
-import RegenerateModal from '@/components/templates/RegenerateModal';
-
+import MasterBatchHeader from '@/components/templates/master-batch/MasterBatchHeader';
+import MasterBatchVideoGrid from '@/components/templates/master-batch/MasterBatchVideoGrid';
+import MasterBatchSelectionBar from '@/components/templates/master-batch/MasterBatchSelectionBar';
+import MasterBatchModals from '@/components/templates/master-batch/MasterBatchModals';
 const _cache: Record<string, PipelineBatch & { jobs?: TemplateJob[] }> = {};
 
 async function signUrls(urls: string[]): Promise<Record<string, string>> {
@@ -51,7 +48,7 @@ export default function MasterBatchDetailPage() {
   const [jobPosts, setJobPosts] = useState<Record<string, { platform: string; status: string; platformPostUrl?: string; latePostId?: string }[]>>({});
 
   const masterConfig: MasterConfig | undefined = batch?.masterConfig;
-  const jobs: TemplateJob[] = batch?.jobs || [];
+  const jobs = useMemo<TemplateJob[]>(() => batch?.jobs || [], [batch?.jobs]);
 
   // Build model name + image lookup from masterConfig
   const modelNameMap = useMemo(() => {
@@ -365,6 +362,57 @@ export default function MasterBatchDetailPage() {
     }
   };
 
+  const handleDeleteBatch = async () => {
+    if (!batch) return;
+    if (!confirm('Delete this master batch?')) return;
+    setIsDeleting(true);
+    try {
+      await fetch(`/api/pipeline-batches/${batch.id}`, { method: 'DELETE' });
+      showToast('Batch deleted', 'success');
+      router.push('/jobs?tab=master');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleApproveAll = async () => {
+    if (selectableJobs.length === 0) return;
+    if (!confirm(`Approve all ${selectableJobs.length} videos?`)) return;
+    setPosting(true);
+    try {
+      const ids = selectableJobs.map((job) => job.id);
+      try {
+        const res = await fetch(`/api/templates/master/${id}/post`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobIds: ids }),
+        });
+        const data = await res.json();
+        if (res.ok && data.summary?.posted > 0) {
+          showToast(`Approved & posted all ${data.summary.posted} videos!`, 'success');
+        } else {
+          showToast(`Approved all ${ids.length} videos!`, 'success');
+        }
+      } catch {
+        showToast(`Approved all ${ids.length} videos!`, 'success');
+      }
+      await Promise.all(
+        ids.map((jobId) =>
+          fetch(`/api/templates/${jobId}/post-status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ postStatus: 'posted' }),
+          }),
+        ),
+      );
+      await loadBatch();
+    } catch {
+      showToast('Failed to approve all', 'error');
+    } finally {
+      setPosting(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -389,250 +437,64 @@ export default function MasterBatchDetailPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-20">
-      {/* Breadcrumb */}
-      <Link href="/jobs?tab=master" className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Back to master batches
-      </Link>
+      <MasterBatchHeader
+        batch={batch}
+        masterConfig={masterConfig}
+        isActive={isActive}
+        progress={progress}
+        pending={pending}
+        isRefreshing={isRefreshing}
+        isDeleting={isDeleting}
+        onRefresh={() => {
+          setIsRefreshing(true);
+          loadBatch();
+        }}
+        onDelete={handleDeleteBatch}
+      />
 
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${
-            isActive ? 'bg-master-light text-master dark:text-master-foreground' :
-            'bg-[var(--accent)] text-[var(--text-muted)]'
-          }`}>
-            <Crown className="h-5 w-5" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-master dark:text-master-foreground">{batch.name}</h1>
-            <p className="text-xs text-[var(--text-muted)]">
-              {masterConfig?.models?.length || 0} models · {batch.totalJobs} videos
-              {masterConfig?.publishMode && ` · ${masterConfig.publishMode}`}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => { setIsRefreshing(true); loadBatch(); }}
-            disabled={isRefreshing}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] transition-colors hover:bg-[var(--accent)] disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
-          <button
-            onClick={async () => {
-              if (!confirm('Delete this master batch?')) return;
-              setIsDeleting(true);
-              try {
-                await fetch(`/api/pipeline-batches/${batch.id}`, { method: 'DELETE' });
-                showToast('Batch deleted', 'success');
-                router.push('/jobs?tab=master');
-              } finally {
-                setIsDeleting(false);
-              }
-            }}
-            disabled={isDeleting}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-300 text-red-500 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:hover:bg-red-950/30"
-          >
-            {isDeleting ? <Spinner className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
-          </button>
-        </div>
-      </div>
+      <MasterBatchVideoGrid
+        jobs={jobs}
+        selectableJobs={selectableJobs}
+        selectedJobIds={selectedJobIds}
+        allSelected={allSelected}
+        posting={posting}
+        busyJobIds={busyJobIds}
+        modelNameMap={modelNameMap}
+        modelImageMap={modelImageMap}
+        onApproveAll={handleApproveAll}
+        onToggleSelectAll={allSelected ? clearSelection : selectAll}
+        onToggleJob={toggleJob}
+        onOpenJob={setModalJob}
+        onApproveJob={handleSinglePost}
+        onRejectJob={handleSingleReject}
+        onRepostJob={handleRepost}
+        onQuickRegenerateJob={handleQuickRegenerate}
+        onEditRegenerateJob={openRegenerateModal}
+      />
 
-      {/* Stats + Progress */}
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-        {masterConfig?.caption && (
-          <div className="mb-3 rounded-lg bg-[var(--background)] p-3 text-sm">
-            {masterConfig.caption}
-          </div>
-        )}
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--background)] px-3 py-1.5 text-xs font-medium">
-            <Crown className="h-3.5 w-3.5 text-master dark:text-master-foreground" />
-            {batch.totalJobs} total
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            {batch.completedJobs} done
-          </span>
-          {batch.failedJobs > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 px-3 py-1.5 text-xs font-medium text-red-500">
-              <XCircle className="h-3.5 w-3.5" />
-              {batch.failedJobs} failed
-            </span>
-          )}
-          {pending > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--background)] px-3 py-1.5 text-xs font-medium text-[var(--text-muted)]">
-              <Clock className="h-3.5 w-3.5" />
-              {pending} pending
-            </span>
-          )}
-        </div>
-        {isActive && (
-          <div className="mt-3">
-            <ProgressBar progress={progress} />
-            <div className="mt-1 text-[10px] text-[var(--text-muted)]">{progress}% complete</div>
-          </div>
-        )}
-      </div>
+      <MasterBatchSelectionBar
+        selectedCount={selectedJobIds.size}
+        posting={posting}
+        onRejectSelected={handleRejectSelected}
+        onApproveSelected={handlePostSelected}
+      />
 
-      {/* Video Grid */}
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[var(--text-muted)]">Videos ({jobs.length})</h2>
-          <div className="flex items-center gap-3">
-            {selectableJobs.length > 0 && (
-              <button
-                onClick={async () => {
-                  if (!confirm(`Approve all ${selectableJobs.length} videos?`)) return;
-                  setPosting(true);
-                  try {
-                    const ids = selectableJobs.map(j => j.id);
-                    // Try posting via Late API first
-                    try {
-                      const res = await fetch(`/api/templates/master/${id}/post`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ jobIds: ids }),
-                      });
-                      const data = await res.json();
-                      if (res.ok && data.summary?.posted > 0) {
-                        showToast(`Approved & posted all ${data.summary.posted} videos!`, 'success');
-                      } else {
-                        showToast(`Approved all ${ids.length} videos!`, 'success');
-                      }
-                    } catch {
-                      showToast(`Approved all ${ids.length} videos!`, 'success');
-                    }
-                    // Tag remaining as approved
-                    await Promise.all(
-                      ids.map((jobId) =>
-                        fetch(`/api/templates/${jobId}/post-status`, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ postStatus: 'posted' }),
-                        })
-                      )
-                    );
-                    await loadBatch();
-                  } catch {
-                    showToast('Failed to approve all', 'error');
-                  } finally {
-                    setPosting(false);
-                  }
-                }}
-                disabled={posting}
-                className="flex items-center gap-1.5 rounded-lg bg-master px-3 py-1.5 text-xs font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 dark:text-master-foreground"
-              >
-                {posting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
-                Approve All ({selectableJobs.length})
-              </button>
-            )}
-            {selectableJobs.length > 0 && (
-              <button
-                onClick={allSelected ? clearSelection : selectAll}
-                className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)]"
-              >
-                {allSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-                {allSelected ? 'Clear All' : 'Select All'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {jobs.map((job) => (
-            <MasterJobCard
-              key={job.id}
-              job={job}
-              modelName={job.modelId ? modelNameMap[job.modelId] : undefined}
-              modelImageUrl={job.modelId ? modelImageMap[job.modelId] : undefined}
-              isSelected={selectedJobIds.has(job.id)}
-              onToggle={() => toggleJob(job.id)}
-              onClick={() => setModalJob(job)}
-              onApprove={() => handleSinglePost(job.id)}
-              onReject={() => handleSingleReject(job.id)}
-              onRepost={() => handleRepost(job.id)}
-              onQuickRegenerate={() => handleQuickRegenerate(job.id)}
-              onEditRegenerate={() => openRegenerateModal(job)}
-              isApproving={busyJobIds.has(job.id)}
-              isRejecting={false}
-              isRegenerating={false}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Sticky Action Bar */}
-      {selectedJobIds.size > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur-lg">
-          <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-3">
-            <div className="text-sm font-medium">
-              {selectedJobIds.size} selected
-            </div>
-            <div className="flex-1" />
-            <button
-              onClick={handleRejectSelected}
-              className="flex items-center gap-1.5 rounded-lg border border-red-300 px-4 py-2 text-xs font-medium text-red-500 transition-colors hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950/30"
-            >
-              <XCircle className="h-3.5 w-3.5" />
-              Reject Selected
-            </button>
-            <button
-              onClick={handlePostSelected}
-              disabled={posting}
-              className="flex items-center gap-1.5 rounded-lg bg-master px-5 py-2 text-xs font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 dark:text-master-foreground"
-            >
-              {posting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
-              Approve Selected ({selectedJobIds.size})
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Job Detail Modal */}
-      {modalJob && (() => {
-        const modelInfo = masterConfig?.models?.find((m) => m.modelId === modalJob.modelId);
-        const signedImageUrl = modelInfo?.primaryImageUrl ? signedModelImages[modelInfo.primaryImageUrl] : undefined;
-        const modelInfoWithSignedImage = modelInfo ? {
-          ...modelInfo,
-          primaryImageUrl: signedImageUrl || modelInfo.primaryImageUrl,
-        } : undefined;
-        return (
-          <MasterJobModal
-            job={modalJob}
-            modelInfo={modelInfoWithSignedImage}
-            onClose={() => setModalJob(null)}
-            onPost={() => handleSinglePost(modalJob.id)}
-            onRepost={() => handleRepost(modalJob.id)}
-            onReject={() => handleSingleReject(modalJob.id)}
-            onQuickRegenerate={() => handleQuickRegenerate(modalJob.id)}
-            onEditRegenerate={() => openRegenerateModal(modalJob)}
-            posting={busyJobIds.has(modalJob.id)}
-            regenerating={false}
-            postRecords={jobPosts[modalJob.id]}
-          />
-        );
-      })()}
-
-      {/* Regenerate Modal — image picker */}
-      {regenerateJob && (() => {
-        const modelInfo = masterConfig?.models?.find((m) => m.modelId === regenerateJob.modelId);
-        const signedImageUrl = modelInfo?.primaryImageUrl ? signedModelImages[modelInfo.primaryImageUrl] : undefined;
-        const modelInfoWithSignedImage = modelInfo ? {
-          ...modelInfo,
-          primaryImageUrl: signedImageUrl || modelInfo.primaryImageUrl,
-        } : undefined;
-        return (
-          <RegenerateModal
-            job={regenerateJob}
-            modelInfo={modelInfoWithSignedImage}
-            onClose={() => setRegenerateJob(null)}
-            onRegenerate={handleEditRegenerate}
-          />
-        );
-      })()}
+      <MasterBatchModals
+        modalJob={modalJob}
+        regenerateJob={regenerateJob}
+        masterConfig={masterConfig}
+        signedModelImages={signedModelImages}
+        jobPosts={jobPosts}
+        busyJobIds={busyJobIds}
+        onCloseModalJob={() => setModalJob(null)}
+        onCloseRegenerate={() => setRegenerateJob(null)}
+        onPost={handleSinglePost}
+        onRepost={handleRepost}
+        onReject={handleSingleReject}
+        onQuickRegenerate={handleQuickRegenerate}
+        onEditRegenerateOpen={openRegenerateModal}
+        onEditRegenerateSubmit={handleEditRegenerate}
+      />
     </div>
   );
 }

@@ -1,16 +1,69 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { X, Upload, Star, Trash2, Loader2, ImageIcon, Link2 } from 'lucide-react';
 import type { Model, ModelImage, ModelAccountMapping, Account } from '@/types';
 import { useToast } from '@/hooks/useToast';
+import { Skeleton } from '@/components/ui/skeleton';
 import ModelAccountMapper from '@/components/models/ModelAccountMapper';
+
+function SkeletonImage({
+  src,
+  alt,
+  className,
+  wrapperClassName,
+  fallback,
+  loading = 'lazy',
+}: {
+  src?: string;
+  alt: string;
+  className?: string;
+  wrapperClassName?: string;
+  fallback?: ReactNode;
+  loading?: 'eager' | 'lazy';
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  if (!src || failed) return <>{fallback ?? null}</>;
+
+  return (
+    <div className={`relative overflow-hidden bg-[var(--background)] ${wrapperClassName || ''}`}>
+      {!loaded && (
+        <Skeleton className="absolute inset-0 rounded-none" />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        loading={loading}
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        onError={() => {
+          setFailed(true);
+          setLoaded(true);
+        }}
+        className={`transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'} ${className || ''}`}
+      />
+    </div>
+  );
+}
+
+function ImageSkeletonGrid() {
+  return (
+    <div className="grid grid-cols-4 gap-2.5">
+      {[1, 2, 3, 4].map((i) => (
+        <Skeleton key={i} className="aspect-[3/4] w-full rounded-lg" />
+      ))}
+    </div>
+  );
+}
 
 export default function ModelDetailModal({
   open,
   onClose,
   model,
   modelImages,
+  imagesLoading,
   loadModelImages,
   loadModels,
 }: {
@@ -18,6 +71,7 @@ export default function ModelDetailModal({
   onClose: () => void;
   model: Model | null;
   modelImages: ModelImage[];
+  imagesLoading?: boolean;
   loadModelImages: (modelId: string) => Promise<void>;
   loadModels: () => Promise<void>;
 }) {
@@ -74,48 +128,54 @@ export default function ModelDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-[var(--surface)] shadow-2xl"
+        className="flex h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white dark:bg-neutral-900 shadow-2xl border border-[var(--border)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3.5">
           <div className="flex items-center gap-3">
-            {model.avatarUrl ? (
-              <img src={model.avatarUrl} alt="" className="h-11 w-11 rounded-full object-cover ring-2 ring-[var(--border)]" />
-            ) : (
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--background)] ring-2 ring-[var(--border)]">
-                <ImageIcon className="h-5 w-5 text-[var(--text-muted)]" />
-              </div>
-            )}
+            <SkeletonImage
+              key={model.avatarUrl || 'model-avatar'}
+              src={model.avatarUrl}
+              alt={model.name}
+              loading="eager"
+              wrapperClassName="h-10 w-10 rounded-full ring-2 ring-[var(--border)]"
+              className="h-full w-full rounded-full object-cover"
+              fallback={(
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--background)] ring-2 ring-[var(--border)]">
+                  <ImageIcon className="h-4 w-4 text-[var(--text-muted)]" />
+                </div>
+              )}
+            />
             <div>
-              <h3 className="text-lg font-bold tracking-tight">{model.name}</h3>
+              <h3 className="text-sm font-bold tracking-tight">{model.name}</h3>
               {model.description && (
-                <p className="text-xs text-[var(--text-muted)]">{model.description}</p>
+                <p className="text-[11px] text-[var(--text-muted)]">{model.description}</p>
               )}
             </div>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--accent)]">
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Images Section */}
           <div className="p-5">
             <div className="mb-3 flex items-center justify-between">
-              <h4 className="flex items-center gap-1.5 text-sm font-semibold">
-                <ImageIcon className="h-4 w-4 text-[var(--text-muted)]" />
-                Images ({modelImages.length})
+              <h4 className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                <ImageIcon className="h-3.5 w-3.5" />
+                Reference Images ({modelImages.length})
               </h4>
             </div>
 
             {/* Upload Area */}
             <label
               htmlFor="model-image-upload"
-              className={`mb-4 flex items-center justify-center gap-3 rounded-xl border-2 border-dashed py-6 transition-all ${
+              className={`mb-4 flex items-center justify-center gap-3 rounded-xl border-2 border-dashed py-5 transition-all ${
                 modelImagesUploading
                   ? 'cursor-wait border-[var(--primary)] bg-[var(--primary)]/5 pointer-events-none'
                   : 'cursor-pointer border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--accent)]'
@@ -139,15 +199,15 @@ export default function ModelDetailModal({
             >
               {modelImagesUploading ? (
                 <>
-                  <Loader2 className="h-5 w-5 animate-spin text-[var(--primary)]" />
-                  <span className="text-sm font-medium">Uploading...</span>
+                  <Loader2 className="h-4 w-4 animate-spin text-[var(--primary)]" />
+                  <span className="text-xs font-medium">Uploading...</span>
                 </>
               ) : (
                 <>
-                  <Upload className="h-5 w-5 text-[var(--text-muted)]" />
+                  <Upload className="h-4 w-4 text-[var(--text-muted)]" />
                   <div>
-                    <span className="text-sm font-medium">Drop images or click to upload</span>
-                    <span className="ml-2 text-xs text-[var(--text-muted)]">JPG, PNG, WebP</span>
+                    <span className="text-xs font-medium">Drop images or click to upload</span>
+                    <span className="ml-2 text-[10px] text-[var(--text-muted)]">JPG, PNG, WebP</span>
                   </div>
                 </>
               )}
@@ -168,14 +228,25 @@ export default function ModelDetailModal({
             </label>
 
             {/* Images Grid */}
-            {modelImages.length > 0 && (
+            {imagesLoading ? (
+              <ImageSkeletonGrid />
+            ) : modelImages.length > 0 ? (
               <div className="grid grid-cols-4 gap-2.5">
                 {modelImages.map((img) => (
-                  <div key={img.id} className="group relative overflow-hidden rounded-lg border border-[var(--border)]">
-                    <img
+                  <div
+                    key={`${img.id}-${img.signedUrl || img.gcsUrl}`}
+                    className="group relative overflow-hidden rounded-lg border border-[var(--border)]"
+                  >
+                    <SkeletonImage
                       src={img.signedUrl || img.gcsUrl}
-                      alt=""
-                      className={`aspect-square w-full object-cover ${img.isPrimary ? 'ring-2 ring-[var(--primary)] ring-offset-1' : ''}`}
+                      alt={`${model.name} reference`}
+                      wrapperClassName="aspect-[3/4] w-full"
+                      className={`h-full w-full object-cover ${img.isPrimary ? 'ring-2 ring-[var(--primary)] ring-offset-1' : ''}`}
+                      fallback={(
+                        <div className="flex aspect-[3/4] w-full items-center justify-center bg-[var(--background)] text-[var(--text-muted)]/30">
+                          <ImageIcon className="h-8 w-8" />
+                        </div>
+                      )}
                     />
                     {img.isPrimary && (
                       <span className="absolute left-1.5 top-1.5 flex items-center gap-0.5 rounded-full bg-[var(--primary)] px-1.5 py-0.5 text-[9px] font-bold text-white">
@@ -233,14 +304,14 @@ export default function ModelDetailModal({
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
 
           {/* Social Accounts Section */}
           <div className="border-t border-[var(--border)] p-5">
             <div className="mb-3">
-              <h4 className="flex items-center gap-1.5 text-sm font-semibold">
-                <Link2 className="h-4 w-4 text-[var(--text-muted)]" />
+              <h4 className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                <Link2 className="h-3.5 w-3.5" />
                 Social Accounts ({accountMappings.length})
               </h4>
               <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
@@ -262,7 +333,7 @@ export default function ModelDetailModal({
                   const data = await res.json();
                   setAccountMappings(Array.isArray(data) ? data : []);
                   showToast('Accounts updated', 'success');
-                  loadModels(); // Refresh grid to show updated platform badges
+                  loadModels();
                 }
               }}
             />

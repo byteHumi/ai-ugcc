@@ -1,9 +1,11 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { usePosts } from '@/hooks/usePosts';
-import RefreshButton from '@/components/ui/RefreshButton';
+import { useModelFilterOptions } from '@/hooks/useModelFilterOptions';
+import ModelDateToolbar from '@/components/media/ModelDateToolbar';
+import type { DateFilterValue } from '@/types/media-filters';
 import PostFilters from '@/components/posts/PostFilters';
 import PostList from '@/components/posts/PostList';
 import CreatePostModal from '@/components/posts/CreatePostModal';
@@ -11,29 +13,38 @@ import VideoPreviewModal from '@/components/posts/VideoPreviewModal';
 
 function PostsPageContent() {
   const searchParams = useSearchParams();
-  const { posts, postsFilter, setPostsFilter, isLoadingPage, refresh } = usePosts();
+  const [modelFilter, setModelFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>('newest');
+  const { models: modelOptions } = useModelFilterOptions();
+  const { posts, postsFilter, setPostsFilter, isLoadingPage, refresh } = usePosts({
+    modelId: modelFilter === 'all' ? undefined : modelFilter,
+    dateFilter,
+  });
+  const startsOpen = searchParams.get('createPost') === 'true';
+  const initialVideoUrl = startsOpen ? searchParams.get('videoUrl') : null;
 
-  const [createPostModal, setCreatePostModal] = useState(false);
-  const [preselectedVideoUrl, setPreselectedVideoUrl] = useState<string | null>(null);
+  const [createPostModal, setCreatePostModal] = useState(startsOpen);
+  const [preselectedVideoUrl, setPreselectedVideoUrl] = useState<string | null>(initialVideoUrl);
   const [videoPreview, setVideoPreview] = useState<{ url: string; caption: string } | null>(null);
-
-  useEffect(() => {
-    if (searchParams.get('createPost') === 'true') {
-      const videoUrl = searchParams.get('videoUrl');
-      if (videoUrl) setPreselectedVideoUrl(videoUrl);
-      setCreatePostModal(true);
-    }
-  }, [searchParams]);
 
   return (
     <div>
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[var(--primary)]">Posts</h1>
-          <p className="text-[var(--text-muted)]">Manage scheduled and published content</p>
+          <p className="text-[var(--text-muted)]">
+            Manage scheduled and published content{posts.length > 0 && <span className="ml-1">({posts.length})</span>}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <RefreshButton onClick={refresh} />
+          <ModelDateToolbar
+            modelId={modelFilter}
+            onModelChange={setModelFilter}
+            dateFilter={dateFilter}
+            onDateFilterChange={setDateFilter}
+            modelOptions={modelOptions}
+            onRefresh={refresh}
+          />
           <button
             type="button"
             onClick={() => {

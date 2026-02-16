@@ -1,22 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 export default function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
-
-  if (!mounted) {
+  const { resolvedTheme, setTheme } = useTheme();
+  if (!resolvedTheme) {
     return <Button variant="ghost" size="icon-sm" disabled><Sun className="h-4 w-4" /></Button>;
   }
-
-  const isDark = theme === 'dark';
+  const isDark = resolvedTheme === 'dark';
 
   return (
     <Tooltip>

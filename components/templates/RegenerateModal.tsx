@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2, RotateCcw, Check, ImageIcon, Sparkles, RefreshCw } from 'lucide-react';
 import { signUrls } from '@/lib/signedUrlClient';
+import LoadingShimmer from '@/components/ui/LoadingShimmer';
 import type { TemplateJob, ModelImage, MasterConfigModel, VideoGenConfig } from '@/types';
 
 type ExtractedFrame = {
@@ -406,7 +407,7 @@ export default function RegenerateModal({
                         <div className="grid grid-cols-2 gap-2">
                           {[0, 1].map((i) => (
                             <div key={i} className="relative aspect-[3/4] overflow-hidden rounded-xl bg-gradient-to-br from-master-light to-[var(--background)]">
-                              <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-master/10 to-transparent" />
+                              <LoadingShimmer tone="master" backgroundClassName="bg-gradient-to-br from-master-light to-[var(--background)]" />
                               <div className="absolute top-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/40 text-[9px] font-bold text-white">
                                 {String.fromCharCode(65 + i)}
                               </div>

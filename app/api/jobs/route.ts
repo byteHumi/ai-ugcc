@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getAllJobs } from '@/lib/db';
+import { ensureDatabaseReady, getAllJobs } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    await ensureDatabaseReady();
     const jobs = await getAllJobs();
     return NextResponse.json(jobs, {
       headers: { 'Cache-Control': 'private, max-age=2, stale-while-revalidate=15' },

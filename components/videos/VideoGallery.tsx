@@ -1,0 +1,109 @@
+'use client';
+
+import { useState } from 'react';
+import { PlayCircle } from 'lucide-react';
+import type { GeneratedVideo } from '@/hooks/useGeneratedVideos';
+import LoadingShimmer from '@/components/ui/LoadingShimmer';
+
+function formatDate(iso: string) {
+  const value = +new Date(iso);
+  if (!Number.isFinite(value) || value <= 0) return 'Unknown date';
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function SkeletonCard() {
+  return (
+    <div className="relative aspect-[9/16] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+      <LoadingShimmer />
+    </div>
+  );
+}
+
+export default function VideoGallery({
+  videos,
+  isLoading,
+  onVideoClick,
+}: {
+  videos: GeneratedVideo[];
+  isLoading: boolean;
+  onVideoClick: (video: GeneratedVideo) => void;
+}) {
+  const [loadedById, setLoadedById] = useState<Record<string, true>>({});
+
+  const markLoaded = (id: string) => {
+    setLoadedById((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
+  };
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <SkeletonCard key={i} />
+        ))}
+      </div>
+    );
+  }
+
+  if (videos.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] py-20 text-center">
+        <p className="text-lg font-medium text-[var(--text)]">No generated videos yet</p>
+        <p className="mt-1 text-sm text-[var(--text-muted)]">
+          Completed generated videos will appear here
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {videos.map((video) => {
+        const displayUrl = video.signedUrl || video.gcsUrl;
+        const isLoaded = !!loadedById[video.id];
+        return (
+          <div
+            key={video.id}
+            className="group relative cursor-pointer overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] transition-shadow hover:shadow-lg"
+            onClick={() => onVideoClick(video)}
+          >
+            <div className="relative aspect-[9/16] overflow-hidden bg-[var(--accent)]">
+              {displayUrl ? (
+                <>
+                  <video
+                    src={displayUrl}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    preload="auto"
+                    onLoadedMetadata={() => markLoaded(video.id)}
+                    onError={() => markLoaded(video.id)}
+                    className={`h-full w-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                  />
+                  {!isLoaded && <LoadingShimmer />}
+                </>
+              ) : (
+                <LoadingShimmer />
+              )}
+
+              <div className="absolute inset-0 flex items-center justify-center bg-black/15 opacity-0 transition-opacity group-hover:opacity-100">
+                <PlayCircle className="h-10 w-10 text-white/90" />
+              </div>
+            </div>
+
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-4">
+              <p className="truncate text-[11px] font-medium text-white/95">{video.filename}</p>
+              <p className="truncate text-[10px] text-white/85">{video.createdBy ? `By ${video.createdBy}` : 'By Unknown'}</p>
+              <p className="text-[10px] text-white/75">{formatDate(video.createdAt)}</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

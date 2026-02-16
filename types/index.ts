@@ -31,6 +31,8 @@ export type Post = {
   content?: string;
   status?: string;
   derivedStatus?: 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed' | 'partial' | 'cancelled';
+  modelId?: string;
+  modelName?: string;
   scheduledFor?: string;
   timezone?: string;
   createdAt?: string;

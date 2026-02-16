@@ -2,7 +2,6 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Save, BookOpen, Trash2, PanelRightOpen, PanelRightClose, Play, Loader2, Crown } from 'lucide-react';
 import { usePresets } from '@/hooks/usePresets';
 import { useVideoUpload } from '@/hooks/useVideoUpload';
 import { useToast } from '@/hooks/useToast';
@@ -10,8 +9,8 @@ import PipelineBuilder from '@/components/templates/PipelineBuilder';
 import NodeConfigPanel from '@/components/templates/NodeConfigPanel';
 import type { MasterModel } from '@/components/templates/NodeConfigPanel';
 import MasterCanvasPanel from '@/components/templates/MasterCanvasPanel';
-import Spinner from '@/components/ui/Spinner';
-import Modal from '@/components/ui/Modal';
+import MasterPipelineHeader from '@/components/templates/master-pipeline/MasterPipelineHeader';
+import MasterPipelinePresetModals from '@/components/templates/master-pipeline/MasterPipelinePresetModals';
 import type { MiniAppStep, TextOverlayConfig, BgMusicConfig, AttachVideoConfig, Model } from '@/types';
 
 const MASTER_DRAFT_KEY = 'ai-ugc-master-pipeline-draft';
@@ -258,25 +257,6 @@ export default function MasterPipelinePage() {
       showToast('Failed to save preset', 'error');
     }
   };
-
-  /* ── Execution logic ──
-   *
-   * How master pipeline works:
-   * 1. User builds a pipeline with video-gen / batch-video-gen + other steps (text overlay, bg music, etc.)
-   * 2. Video-gen and batch-video-gen steps show "Auto Model Images" — no image picker needed
-   * 3. User selects N models from the right panel. Each model has a primary image + linked social accounts.
-   * 4. User sets caption + publish mode (now / schedule / queue / draft)
-   * 5. On Run → POST /api/templates/master
-   *    Backend per model:
-   *      - Clones the pipeline
-   *      - Injects the model's primary image into every video-generation step
-   *      - Converts batch-video-generation → video-generation with that model's image
-   *      - Creates a template_job with model_id set
-   *    All jobs are grouped under one pipeline_batch (is_master=true)
-   *    Jobs are processed in parallel via processPipelineBatch()
-   * 6. Results appear in /jobs → Master tab
-   * 7. From there, user can review each model's video, approve/reject, then batch-post to their social accounts
-   */
   const handleRun = async () => {
     const enabledSteps = steps.filter((s) => s.enabled);
     if (enabledSteps.length === 0) {
@@ -375,56 +355,16 @@ export default function MasterPipelinePage() {
 
   return (
     <div className="-m-8">
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-3 md:px-6">
-        <div className="shrink-0">
-          <div className="flex items-center gap-2">
-            <Crown className="h-5 w-5 text-master dark:text-master-foreground" />
-            <h1 className="text-2xl font-bold tracking-tight text-master dark:text-master-foreground">Master Pipeline</h1>
-          </div>
-          <p className="text-xs text-[var(--text-muted)]">Run one pipeline across all your models</p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Toolbar */}
-          <div className="flex items-center rounded-lg border border-[var(--border)] bg-[var(--surface)] backdrop-blur-xl">
-            <button
-              onClick={() => setShowPresets(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text)] hover:bg-[var(--accent)] rounded-l-lg"
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Presets</span>
-            </button>
-            <div className="h-5 w-px bg-[var(--border)]" />
-            <button
-              onClick={() => setShowSavePreset(true)}
-              disabled={steps.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text)] hover:bg-[var(--accent)] disabled:opacity-40 disabled:pointer-events-none"
-            >
-              <Save className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Save</span>
-            </button>
-            <div className="h-5 w-px bg-[var(--border)]" />
-            <button
-              onClick={() => setPanelOpen(!panelOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text)] hover:bg-[var(--accent)] rounded-r-lg"
-            >
-              {panelOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
-              <span className="hidden sm:inline">Panel</span>
-            </button>
-          </div>
-
-          {/* Run button */}
-          <button
-            onClick={handleRun}
-            disabled={isSubmitting || steps.filter((s) => s.enabled).length === 0}
-            className="flex items-center gap-1.5 rounded-lg bg-master px-4 py-1.5 text-xs font-semibold text-white transition-all hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none"
-          >
-            {isSubmitting ? <Spinner className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 fill-current" />}
-            Run ({selectedModelIds.length})
-          </button>
-        </div>
-      </div>
+      <MasterPipelineHeader
+        enabledStepCount={steps.filter((step) => step.enabled).length}
+        selectedModelCount={selectedModelIds.length}
+        isSubmitting={isSubmitting}
+        panelOpen={panelOpen}
+        onOpenPresets={() => setShowPresets(true)}
+        onOpenSavePreset={() => setShowSavePreset(true)}
+        onTogglePanel={() => setPanelOpen((prev) => !prev)}
+        onRun={handleRun}
+      />
 
       {/* Main area: Canvas + Panel */}
       <div className="flex" style={{ height: 'calc(100vh - 7.5rem)' }}>
@@ -524,77 +464,21 @@ export default function MasterPipelinePage() {
         )}
       </div>
 
-      {/* Presets Modal */}
-      <Modal open={showPresets} onClose={() => setShowPresets(false)} title="Pipeline Presets">
-        <div className="p-4">
-          {presetsLoading && presets.length === 0 ? (
-            <div className="flex items-center justify-center gap-2 py-8">
-              <Loader2 className="h-4 w-4 animate-spin text-[var(--primary)]" />
-              <span className="text-sm text-[var(--text-muted)]">Loading presets...</span>
-            </div>
-          ) : presets.length === 0 ? (
-            <div className="py-8 text-center text-sm text-[var(--text-muted)]">
-              No saved presets yet. Build a pipeline and click &ldquo;Save&rdquo; to create one.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {presets.map((preset) => (
-                <div
-                  key={preset.id}
-                  className="flex items-center gap-3 rounded-lg border border-[var(--border)] p-3 transition-colors hover:bg-[var(--background)]"
-                >
-                  <div className="min-w-0 flex-1 cursor-pointer" onClick={() => handleLoadPreset(preset.pipeline)}>
-                    <div className="text-sm font-medium">{preset.name}</div>
-                    <div className="text-xs text-[var(--text-muted)]">
-                      {preset.pipeline.length} step{preset.pipeline.length !== 1 ? 's' : ''}
-                      {preset.description && ` — ${preset.description}`}
-                    </div>
-                    <div className="mt-1 flex gap-1">
-                      {preset.pipeline.map((s, i) => (
-                        <span key={i} className="rounded bg-[var(--background)] px-1.5 py-0.5 text-[9px] capitalize text-[var(--text-muted)]">
-                          {s.type.replace('-', ' ')}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => deletePreset(preset.id)}
-                    className="shrink-0 text-[var(--text-muted)] hover:text-[var(--error)]"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </Modal>
-
-      {/* Save Preset Modal */}
-      <Modal open={showSavePreset} onClose={() => setShowSavePreset(false)} title="Save as Preset">
-        <div className="p-4 space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium">Preset Name</label>
-            <input
-              value={presetName}
-              onChange={(e) => setPresetName(e.target.value)}
-              placeholder="My Master Pipeline"
-              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm"
-              onKeyDown={(e) => e.key === 'Enter' && handleSavePreset()}
-            />
-          </div>
-          <div className="text-xs text-[var(--text-muted)]">
-            This will save the current {steps.length} step{steps.length !== 1 ? 's' : ''} as a reusable preset.
-          </div>
-          <div className="flex justify-end gap-2">
-            <button onClick={() => setShowSavePreset(false)} disabled={presetSaving} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm disabled:opacity-50">Cancel</button>
-            <button onClick={handleSavePreset} disabled={presetSaving} className="flex items-center gap-2 rounded-lg bg-master px-4 py-2 text-sm text-white disabled:opacity-70">
-              {presetSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {presetSaving ? 'Saving...' : 'Save Preset'}
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <MasterPipelinePresetModals
+        showPresets={showPresets}
+        showSavePreset={showSavePreset}
+        presets={presets}
+        presetsLoading={presetsLoading}
+        presetSaving={presetSaving}
+        presetName={presetName}
+        stepsCount={steps.length}
+        onClosePresets={() => setShowPresets(false)}
+        onCloseSavePreset={() => setShowSavePreset(false)}
+        onLoadPreset={handleLoadPreset}
+        onDeletePreset={deletePreset}
+        onPresetNameChange={setPresetName}
+        onSavePreset={handleSavePreset}
+      />
     </div>
   );
 }

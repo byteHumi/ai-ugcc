@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Save, BookOpen, Trash2, PanelRightOpen, PanelRightClose, Play, Loader2 } from 'lucide-react';
@@ -8,14 +7,10 @@ import { useVideoUpload } from '@/hooks/useVideoUpload';
 import { useToast } from '@/hooks/useToast';
 import PipelineBuilder from '@/components/templates/PipelineBuilder';
 import NodeConfigPanel from '@/components/templates/NodeConfigPanel';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import Spinner from '@/components/ui/Spinner';
 import Modal from '@/components/ui/Modal';
 import type { MiniAppStep, VideoGenConfig, TextOverlayConfig, BgMusicConfig, AttachVideoConfig, BatchVideoGenConfig } from '@/types';
-
 const DRAFT_KEY = 'ai-ugc-pipeline-draft';
-
 type PipelineDraft = {
   steps: MiniAppStep[];
   name: string;
@@ -26,7 +21,6 @@ type PipelineDraft = {
   sourceDuration?: number;
   previewUrl?: string;
 };
-
 function loadDraft(): PipelineDraft | null {
   try {
     const raw = sessionStorage.getItem(DRAFT_KEY);
@@ -34,20 +28,15 @@ function loadDraft(): PipelineDraft | null {
   } catch {}
   return null;
 }
-
 export default function TemplatesPage() {
   const router = useRouter();
   const { presets, isLoading: presetsLoading, isSaving: presetSaving, savePreset, deletePreset } = usePresets();
   const { uploadVideo, isUploading, progress } = useVideoUpload();
   const { showToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
-
-  // Restore draft from sessionStorage on mount
   const draft = useRef(loadDraft());
-
-  // Pipeline state
   const [steps, setSteps] = useState<MiniAppStep[]>(() => draft.current?.steps ?? []);
-  const [name, setName] = useState(() => draft.current?.name ?? '');
+  const [name] = useState(() => draft.current?.name ?? '');
   const [videoSource, setVideoSource] = useState<'tiktok' | 'upload'>(() => draft.current?.videoSource ?? 'tiktok');
   const [tiktokUrl, setTiktokUrl] = useState(() => draft.current?.tiktokUrl ?? '');
   const [videoUrl, setVideoUrl] = useState(() => draft.current?.videoUrl ?? '');
@@ -57,28 +46,21 @@ export default function TemplatesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResolvingPreview, setIsResolvingPreview] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Map<string, string>>(new Map());
-
-  // Auto-save draft to sessionStorage on changes
   useEffect(() => {
     const d: PipelineDraft = { steps, name, videoSource, tiktokUrl, videoUrl, uploadedFilename, sourceDuration, previewUrl };
     try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch {}
   }, [steps, name, videoSource, tiktokUrl, videoUrl, uploadedFilename, sourceDuration, previewUrl]);
-
-  // Resolve pasted URL to a playable video URL for preview
   useEffect(() => {
     if (videoSource !== 'tiktok' || !tiktokUrl.trim()) {
       if (videoSource === 'tiktok') setPreviewUrl('');
       return;
     }
-
     const url = tiktokUrl.trim();
     const isTikTok = /tiktok\.com/i.test(url);
     const isInstagram = /instagram\.com\/(p|reel|reels)\//i.test(url);
     if (!isTikTok && !isInstagram) return;
-
     setIsResolvingPreview(true);
     setPreviewUrl('');
-
     const controller = new AbortController();
     const timer = setTimeout(() => {
       fetch('/api/resolve-video-url', {
@@ -96,21 +78,16 @@ export default function TemplatesPage() {
         .catch(() => {})
         .finally(() => setIsResolvingPreview(false));
     }, 800);
-
     return () => {
       clearTimeout(timer);
       controller.abort();
       setIsResolvingPreview(false);
     };
   }, [tiktokUrl, videoSource]);
-
-  // UI state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [showPresets, setShowPresets] = useState(false);
   const [showSavePreset, setShowSavePreset] = useState(false);
   const [presetName, setPresetName] = useState('');
-
-  // Sidebar resize + responsive
   const [panelWidth, setPanelWidth] = useState(380);
   const [panelOpen, setPanelOpen] = useState(true);
   const [panelExpanded, setPanelExpanded] = useState(false);
@@ -118,14 +95,12 @@ export default function TemplatesPage() {
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartW = useRef(0);
-
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
-
   const onDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDragging.current = true;
@@ -133,7 +108,6 @@ export default function TemplatesPage() {
     dragStartW.current = panelWidth;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-
     const onMove = (ev: MouseEvent) => {
       if (!isDragging.current) return;
       const delta = dragStartX.current - ev.clientX;
@@ -149,7 +123,6 @@ export default function TemplatesPage() {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }, [panelWidth]);
-
   const handleVideoFile = useCallback(async (file: File) => {
     const objectUrl = URL.createObjectURL(file);
     const vid = document.createElement('video');
@@ -162,7 +135,6 @@ export default function TemplatesPage() {
     };
     vid.onerror = () => URL.revokeObjectURL(objectUrl);
     vid.src = objectUrl;
-
     try {
       const result = await uploadVideo(file);
       if (result) {
@@ -174,21 +146,17 @@ export default function TemplatesPage() {
       showToast('Failed to upload video', 'error');
     }
   }, [uploadVideo, showToast]);
-
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) handleVideoFile(file);
   };
-
   const handleUpdateStep = (id: string, updated: MiniAppStep) => {
     setSteps((prev) => prev.map((s) => (s.id === id ? updated : s)));
   };
-
   const handleRemoveStep = (id: string) => {
     setSteps((prev) => prev.filter((s) => s.id !== id));
     if (selectedNodeId === id) setSelectedNodeId(null);
   };
-
   const handleLoadPreset = (pipeline: MiniAppStep[]) => {
     const newSteps = pipeline.map((s) => ({
       ...s,
@@ -199,7 +167,6 @@ export default function TemplatesPage() {
     setSelectedNodeId(null);
     showToast('Preset loaded!', 'success');
   };
-
   const handleSavePreset = async () => {
     if (!presetName.trim()) {
       showToast('Enter a preset name', 'error');
@@ -218,20 +185,17 @@ export default function TemplatesPage() {
       showToast('Failed to save preset', 'error');
     }
   };
-
   const handleRun = async () => {
     const enabledSteps = steps.filter((s) => s.enabled);
     if (enabledSteps.length === 0) {
       showToast('Add at least one pipeline step', 'error');
       return;
     }
-
     const firstStep = enabledSteps[0];
     const needsInputVideo = !(
       (firstStep.type === 'video-generation' && (firstStep.config as { mode?: string }).mode === 'subtle-animation') ||
       (firstStep.type === 'batch-video-generation' && (firstStep.config as { mode?: string }).mode === 'subtle-animation')
     );
-
     if (needsInputVideo) {
       if (videoSource === 'tiktok' && !tiktokUrl) {
         showToast('Enter a TikTok URL', 'error');
@@ -244,7 +208,6 @@ export default function TemplatesPage() {
         return;
       }
     }
-
     const errors = new Map<string, string>();
     for (const s of enabledSteps) {
       switch (s.type) {
@@ -283,7 +246,6 @@ export default function TemplatesPage() {
       return;
     }
     setValidationErrors(new Map());
-
     setIsSubmitting(true);
     try {
       const res = await fetch('/api/templates', {
@@ -297,12 +259,10 @@ export default function TemplatesPage() {
           videoUrl: videoSource === 'upload' ? videoUrl : undefined,
         }),
       });
-
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || 'Failed to create template job');
       }
-
       const data = await res.json();
       const isBatch = data.isBatch === true;
       if (!isBatch) {
@@ -319,7 +279,6 @@ export default function TemplatesPage() {
       setIsSubmitting(false);
     }
   };
-
   return (
     <div className="-m-8">
       {/* Top bar */}
@@ -328,7 +287,6 @@ export default function TemplatesPage() {
           <h1 className="text-2xl font-bold tracking-tight text-[var(--primary)]">Pipelines</h1>
           <p className="text-xs text-[var(--text-muted)]">Build multi-step video pipelines</p>
         </div>
-
         <div className="flex items-center gap-2">
           {/* Grouped toolbar */}
           <div className="flex items-center rounded-lg border border-[var(--border)] bg-[var(--surface)] backdrop-blur-xl">
@@ -357,7 +315,6 @@ export default function TemplatesPage() {
               <span className="hidden sm:inline">Panel</span>
             </button>
           </div>
-
           {/* Run button */}
           <button
             onClick={handleRun}
@@ -369,7 +326,6 @@ export default function TemplatesPage() {
           </button>
         </div>
       </div>
-
       {/* Main area: Canvas + Config Panel */}
       <div className="flex" style={{ height: 'calc(100vh - 7.5rem)' }}>
         {/* Left: Flow canvas */}
@@ -387,7 +343,6 @@ export default function TemplatesPage() {
             />
           </div>
         )}
-
         {/* Right: Config Panel (resizable / expandable) */}
         {panelOpen && (
           <>
@@ -397,7 +352,6 @@ export default function TemplatesPage() {
                 onClick={() => setPanelOpen(false)}
               />
             )}
-
             <div
               className={`relative shrink-0 transition-all duration-200 ${
                 panelExpanded
@@ -417,7 +371,6 @@ export default function TemplatesPage() {
                   <div className="h-8 w-1 rounded-full bg-[var(--text-muted)]/30 transition-colors hover:bg-[var(--text-muted)]/60" />
                 </div>
               )}
-
               <input ref={fileRef} type="file" accept="video/*" onChange={handleVideoUpload} className="hidden" />
               <NodeConfigPanel
                 selectedId={selectedNodeId}
@@ -450,7 +403,6 @@ export default function TemplatesPage() {
           </>
         )}
       </div>
-
       {/* Presets Modal */}
       <Modal open={showPresets} onClose={() => setShowPresets(false)} title="Pipeline Presets">
         <div className="p-4">
@@ -496,7 +448,6 @@ export default function TemplatesPage() {
           )}
         </div>
       </Modal>
-
       {/* Save Preset Modal */}
       <Modal open={showSavePreset} onClose={() => setShowSavePreset(false)} title="Save as Preset">
         <div className="p-4 space-y-4">

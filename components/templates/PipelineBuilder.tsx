@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, useRef, useCallback, useEffect, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
@@ -20,14 +19,10 @@ import type {
 } from '@/types';
 import MiniAppPicker from './MiniAppPicker';
 import Modal from '@/components/ui/Modal';
-
-/* ── Constants ────────────────────────────────────────────────── */
 const CARD_W = 300;
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 2.0;
 const ZOOM_STEP = 0.1;
-
-/* ── Node metadata ────────────────────────────────────────────── */
 const nodeMeta: Record<MiniAppType, {
   label: string;
   icon: typeof Video;
@@ -40,12 +35,9 @@ const nodeMeta: Record<MiniAppType, {
   'attach-video':     { label: 'Attach Video',     icon: Film,   iconBg: 'rgba(232, 114, 154, 0.10)',    iconColor: '#e8729a' },
   'batch-video-generation': { label: 'Batch Video Gen', icon: Layers, iconBg: 'rgba(217, 119, 6, 0.10)', iconColor: '#d97706' },
 };
-
-/* ── Helpers ───────────────────────────────────────────────────── */
 function clamp(v: number, min: number, max: number) {
   return Math.min(max, Math.max(min, v));
 }
-
 function getStepSummary(step: MiniAppStep): string {
   if (!step.enabled) return 'Disabled';
   switch (step.type) {
@@ -80,7 +72,6 @@ function getStepSummary(step: MiniAppStep): string {
     default: return '';
   }
 }
-
 function isStepConfigured(step: MiniAppStep): boolean {
   switch (step.type) {
     case 'text-overlay':     return !!(step.config as TextOverlayConfig).text;
@@ -91,8 +82,6 @@ function isStepConfigured(step: MiniAppStep): boolean {
     default: return false;
   }
 }
-
-/* ── Connector (green dotted + animated dot when filled) ──────── */
 function FlowConnector({ filled }: { filled: boolean }) {
   return (
     <div className="flex justify-center py-0.5">
@@ -113,8 +102,6 @@ function FlowConnector({ filled }: { filled: boolean }) {
     </div>
   );
 }
-
-/* ── Sortable Node ─────────────────────────────────────────────── */
 function SortableFlowNode({
   step, index, isSelected, onSelect, onToggle, onRemove, steps, validationError,
 }: {
@@ -124,19 +111,16 @@ function SortableFlowNode({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: step.id });
-
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 50 : 0,
     width: CARD_W,
   };
-
   const meta = nodeMeta[step.type];
   const Icon = meta.icon;
   const summary = getStepSummary(step);
   const configured = isStepConfigured(step);
-
   return (
     <div ref={setNodeRef} style={style} className="relative">
       {/* Card */}
@@ -167,7 +151,6 @@ function SortableFlowNode({
           >
             <GripVertical className="h-3.5 w-3.5" />
           </button>
-
           {/* Icon */}
           <div
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
@@ -175,7 +158,6 @@ function SortableFlowNode({
           >
             <Icon className="h-4 w-4" style={{ color: meta.iconColor }} />
           </div>
-
           {/* Text */}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
@@ -198,11 +180,9 @@ function SortableFlowNode({
               })()}
             </div>
           </div>
-
           <ChevronRight className="h-4 w-4 shrink-0 text-[var(--border)]" />
         </div>
       </div>
-
       {/* Side actions: absolute so they don't affect card centering */}
       <div className="absolute right-0 top-2 translate-x-[calc(100%+8px)] flex flex-col items-center gap-1">
         <button
@@ -222,13 +202,10 @@ function SortableFlowNode({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
-
       <FlowConnector filled={configured && step.enabled} />
     </div>
   );
 }
-
-/* ── Zoom Controls ────────────────────────────────────────────── */
 function ZoomControls({
   zoom, onZoomIn, onZoomOut, onFitView,
 }: {
@@ -265,8 +242,6 @@ function ZoomControls({
     </div>
   );
 }
-
-/* ── Pipeline Builder ──────────────────────────────────────────── */
 export default function PipelineBuilder({
   steps, onChange, selectedId, onSelect,
   videoSource, tiktokUrl, videoUrl, validationErrors,
@@ -289,8 +264,6 @@ export default function PipelineBuilder({
   const panStart = useRef({ x: 0, y: 0 });
   const panOrigin = useRef({ x: 0, y: 0 });
   const hasMounted = useRef(false);
-
-  /* ── Fit view (auto-center) ───────────────────────────────── */
   const fitView = useCallback(() => {
     if (!canvasRef.current || !contentRef.current) return;
     const canvas = canvasRef.current.getBoundingClientRect();
@@ -306,7 +279,6 @@ export default function PipelineBuilder({
     setZoom(newZoom);
     setPan({ x: newPanX, y: newPanY });
   }, []);
-
   useEffect(() => {
     if (!hasMounted.current) {
       const t = setTimeout(fitView, 50);
@@ -314,28 +286,23 @@ export default function PipelineBuilder({
       return () => clearTimeout(t);
     }
   }, [fitView]);
-
-  /* ── dnd-kit sensors ──────────────────────────────────────── */
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     onChange(arrayMove(steps, steps.findIndex((s) => s.id === active.id), steps.findIndex((s) => s.id === over.id)));
   };
-
-  /* ── Pan handling ─────────────────────────────────────────── */
   const handleCanvasMouseDown = useCallback((e: ReactMouseEvent) => {
     if (e.target !== e.currentTarget && !(e.target as HTMLElement).dataset.canvas) return;
     isPanning.current = true;
     panStart.current = { x: e.clientX, y: e.clientY };
     panOrigin.current = { x: pan.x, y: pan.y };
+    document.body.style.cursor = 'grabbing';
     e.preventDefault();
   }, [pan]);
-
   useEffect(() => {
     const handleMouseMove = (e: globalThis.MouseEvent) => {
       if (!isPanning.current) return;
@@ -344,7 +311,10 @@ export default function PipelineBuilder({
         y: panOrigin.current.y + (e.clientY - panStart.current.y),
       });
     };
-    const handleMouseUp = () => { isPanning.current = false; };
+    const handleMouseUp = () => {
+      isPanning.current = false;
+      document.body.style.cursor = '';
+    };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {
@@ -352,14 +322,11 @@ export default function PipelineBuilder({
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
-
-  /* ── Zoom handling (wheel) ────────────────────────────────── */
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      // Very gentle zoom — small multiplier + tight clamp for trackpad & wheel
       const raw = -e.deltaY * 0.0003;
       const delta = clamp(raw, -0.02, 0.02);
       setZoom((prevZoom) => {
@@ -378,35 +345,26 @@ export default function PipelineBuilder({
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
-
-  /* ── Callbacks ────────────────────────────────────────────── */
   const handleAdd = (step: MiniAppStep) => {
     onChange([...steps, step]);
     setShowPicker(false);
     onSelect(step.id);
   };
-
   const handleToggle = (id: string) => {
     onChange(steps.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s)));
   };
-
   const handleRemove = (id: string) => {
     onChange(steps.filter((s) => s.id !== id));
     if (selectedId === id) onSelect(null);
   };
-
   const handleZoomIn = () => setZoom((z) => clamp(z + ZOOM_STEP, MIN_ZOOM, MAX_ZOOM));
   const handleZoomOut = () => setZoom((z) => clamp(z - ZOOM_STEP, MIN_ZOOM, MAX_ZOOM));
-
-  /* ── Derived ──────────────────────────────────────────────── */
   const sourceHasValue = videoSource === 'tiktok' ? !!tiktokUrl : !!videoUrl;
   const sourceSummary = videoSource === 'tiktok'
     ? (tiktokUrl ? tiktokUrl.slice(0, 28) + '\u2026' : 'Configure TikTok URL\u2026')
     : (videoUrl ? 'Video uploaded' : 'Upload a video\u2026');
   const enabledCount = steps.filter((s) => s.enabled).length;
-
   const dotSize = 20 * zoom;
-
   return (
     <div className="relative h-full w-full">
       {/* Canvas */}
@@ -416,7 +374,7 @@ export default function PipelineBuilder({
         data-canvas="true"
         className="absolute inset-0 overflow-hidden"
         style={{
-          cursor: isPanning.current ? 'grabbing' : 'grab',
+          cursor: 'grab',
           backgroundImage: `radial-gradient(circle, var(--border) 1px, transparent 1px)`,
           backgroundSize: `${dotSize}px ${dotSize}px`,
           backgroundPosition: `${pan.x % dotSize}px ${pan.y % dotSize}px`,
@@ -432,7 +390,6 @@ export default function PipelineBuilder({
         >
           {/* Vertical flow */}
           <div ref={contentRef} className="flex flex-col items-center py-10" data-canvas="true">
-
             {/* ── Source Node ── */}
             <div
               onClick={() => onSelect('source')}
@@ -465,9 +422,7 @@ export default function PipelineBuilder({
                 <ChevronRight className="h-4 w-4 shrink-0 text-[var(--border)]" />
               </div>
             </div>
-
             <FlowConnector filled={sourceHasValue} />
-
             {/* ── Pipeline Steps ── */}
             {steps.length > 0 && (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -488,7 +443,6 @@ export default function PipelineBuilder({
                 </SortableContext>
               </DndContext>
             )}
-
             {/* ── Add Step ── */}
             <button
               onClick={(e) => { e.stopPropagation(); setShowPicker(true); }}
@@ -498,9 +452,7 @@ export default function PipelineBuilder({
               <Plus className="h-4 w-4 text-[var(--text-muted)] transition-colors group-hover:text-[var(--primary)]" />
               <span className="text-sm font-medium text-[var(--text-muted)] transition-colors group-hover:text-[var(--primary)]">Add Step</span>
             </button>
-
             <FlowConnector filled={false} />
-
             {/* ── Output Node ── */}
             <div
               className="rounded-2xl border border-black/[0.08] bg-[var(--surface)] backdrop-blur-xl shadow"
@@ -526,7 +478,6 @@ export default function PipelineBuilder({
           </div>
         </div>
       </div>
-
       {/* Zoom controls */}
       <ZoomControls
         zoom={zoom}
@@ -534,7 +485,6 @@ export default function PipelineBuilder({
         onZoomOut={handleZoomOut}
         onFitView={fitView}
       />
-
       {/* Picker Modal */}
       <Modal open={showPicker} onClose={() => setShowPicker(false)} title="Add Pipeline Step">
         <div className="p-5">

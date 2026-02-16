@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Sparkles, UserCircle, Package, FileText, Link2, ListVideo, LayoutTemplate, ClipboardList, ImageIcon, Crown, LogOut } from 'lucide-react';
+import { Sparkles, UserCircle, Package, FileText, Link2, ListVideo, LayoutTemplate, ClipboardList, ImageIcon, Crown, LogOut, Video } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import {
   Sidebar,
@@ -23,15 +23,16 @@ import ThemeToggle from '@/components/ui/ThemeToggle';
 const createItems = [
   { href: '/templates', label: 'Pipelines', icon: LayoutTemplate },
   { href: '/master-pipeline', label: 'Master Pipeline', icon: Crown },
-  { href: '/generate', label: 'Generate', icon: Sparkles },
+  // { href: '/generate', label: 'Generate', icon: Sparkles },
 ];
 
 const contentItems = [
   { href: '/jobs', label: 'Jobs', icon: ClipboardList },
-  { href: '/queue', label: 'Queue', icon: ListVideo },
-  { href: '/batches', label: 'Batches', icon: Package },
+  // { href: '/queue', label: 'Queue', icon: ListVideo },
+  // { href: '/batches', label: 'Batches', icon: Package },
   { href: '/posts', label: 'Posts', icon: FileText },
   { href: '/images', label: 'Images', icon: ImageIcon },
+  { href: '/videos', label: 'Videos', icon: Video },
 ];
 
 const settingsItems = [

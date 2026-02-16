@@ -145,10 +145,10 @@ export default function MasterBatchList({
                       {pending}
                     </span>
                   )}
-                  <span className="ml-auto text-[10px] text-[var(--text-muted)]">
-                    {formatDate(batch.createdAt)}
-                    {batch.createdBy && <> &middot; By {batch.createdBy}</>}
-                  </span>
+                  <div className="ml-auto text-right">
+                    <p className="text-[10px] text-[var(--text-muted)]">{formatDate(batch.createdAt)}</p>
+                    <p className="text-[10px] text-[var(--text-muted)]">By {batch.createdBy || 'Unknown'}</p>
+                  </div>
                 </div>
               </div>
 

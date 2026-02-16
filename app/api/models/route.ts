@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createModel, getAllModels, getModelImageCountsForModels, getModelAccountMappingsForModels } from '@/lib/db';
+import { createModel, ensureDatabaseReady, getAllModels, getModelImageCountsForModels, getModelAccountMappingsForModels } from '@/lib/db';
 import { getCachedSignedUrl } from '@/lib/signedUrlCache';
 
 interface Model {
@@ -12,6 +12,7 @@ interface Model {
 // GET /api/models - List all models with image counts and linked platforms
 export async function GET() {
   try {
+    await ensureDatabaseReady();
     const models = await getAllModels();
     const modelIds = models.map((m: Model) => m.id);
 

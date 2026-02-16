@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
-import { getModel, getModelImages, createModelImage } from '@/lib/db';
+import { ensureDatabaseReady, getModel, getModelImages, createModelImage } from '@/lib/db';
 import { uploadImage } from '@/lib/storage';
 import { getCachedSignedUrl } from '@/lib/signedUrlCache';
 
@@ -20,6 +20,7 @@ type ModelImageRecord = {
 // GET /api/models/[id]/images - List all images for a model
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
+    await ensureDatabaseReady();
     const { id } = await params;
     const model = await getModel(id);
 
@@ -39,7 +40,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     }));
 
     return NextResponse.json(withSigned, {
-      headers: { 'Cache-Control': 'no-store, max-age=0' },
+      headers: { 'Cache-Control': 'private, max-age=20, stale-while-revalidate=120' },
     });
   } catch (err) {
     console.error('Get model images error:', err);

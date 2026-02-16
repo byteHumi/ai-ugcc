@@ -1,10 +1,11 @@
 'use client';
 
 import Image from 'next/image';
-import { type ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { ImageIcon, Link2 } from 'lucide-react';
 import { FaTiktok, FaInstagram, FaYoutube, FaFacebook, FaXTwitter, FaLinkedin } from 'react-icons/fa6';
 import type { Model } from '@/types';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const PLATFORM_META: Record<string, { label: string; icon: ReactNode; color: string }> = {
   tiktok:    { label: 'TikTok',    icon: <FaTiktok className="h-3 w-3" />,    color: '#00f2ea' },
@@ -14,6 +15,49 @@ const PLATFORM_META: Record<string, { label: string; icon: ReactNode; color: str
   twitter:   { label: 'X',         icon: <FaXTwitter className="h-3 w-3" />,  color: '#9ca3af' },
   linkedin:  { label: 'LinkedIn',  icon: <FaLinkedin className="h-3 w-3" />,  color: '#0A66C2' },
 };
+
+function ModelAvatar({
+  src,
+  alt,
+  priority,
+}: {
+  src?: string;
+  alt: string;
+  priority: boolean;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  if (!src || failed) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-[var(--text-muted)]/30">
+        <ImageIcon className="h-16 w-16" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-[var(--background)]">
+      {!loaded && (
+        <Skeleton className="absolute inset-0 rounded-none" />
+      )}
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        priority={priority}
+        quality={70}
+        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+        onLoad={() => setLoaded(true)}
+        onError={() => {
+          setFailed(true);
+          setLoaded(true);
+        }}
+        className={`h-full w-full object-cover transition-[opacity,transform] duration-300 group-hover:scale-105 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+      />
+    </div>
+  );
+}
 
 export default function ModelGrid({
   models,
@@ -28,13 +72,13 @@ export default function ModelGrid({
 }) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="animate-pulse overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-            <div className="aspect-square bg-[var(--background)]" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div key={i} className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+            <Skeleton className="aspect-[3/4] w-full rounded-none" />
             <div className="p-3 space-y-2">
-              <div className="h-4 w-20 rounded bg-[var(--background)]" />
-              <div className="h-3 w-14 rounded bg-[var(--background)]" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-3 w-16" />
             </div>
           </div>
         ))}
@@ -61,7 +105,7 @@ export default function ModelGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {models.map((model, index) => {
         const platforms = model.linkedPlatforms || [];
         return (
@@ -71,22 +115,13 @@ export default function ModelGrid({
             className="group cursor-pointer overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] transition-all hover:border-[var(--primary)]/50 hover:shadow-lg"
           >
             {/* Avatar / Hero Image */}
-            <div className="relative aspect-square bg-[var(--background)]">
-              {model.avatarUrl ? (
-                <Image
-                  src={model.avatarUrl}
-                  alt={model.name}
-                  fill
-                  priority={index < 4}
-                  quality={70}
-                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-[var(--text-muted)]/30">
-                  <ImageIcon className="h-16 w-16" />
-                </div>
-              )}
+            <div className="relative aspect-[3/4] bg-[var(--background)]">
+              <ModelAvatar
+                key={model.avatarUrl || `empty-${model.id}`}
+                src={model.avatarUrl}
+                alt={model.name}
+                priority={index < 4}
+              />
 
               {/* Image count badge */}
               <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
@@ -112,22 +147,22 @@ export default function ModelGrid({
                   })}
                 </div>
               )}
-            </div>
 
-            {/* Info */}
-            <div className="p-3">
-              <div className="truncate text-sm font-semibold">{model.name}</div>
-              <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
-                <span>{model.imageCount || 0} image{(model.imageCount || 0) !== 1 ? 's' : ''}</span>
-                {platforms.length > 0 && (
-                  <>
-                    <span>&middot;</span>
-                    <span className="inline-flex items-center gap-0.5">
-                      <Link2 className="h-2.5 w-2.5" />
-                      {platforms.length} account{platforms.length !== 1 ? 's' : ''}
-                    </span>
-                  </>
-                )}
+              {/* Bottom gradient with name overlay */}
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-3 pb-2.5 pt-8">
+                <div className="truncate text-sm font-semibold text-white">{model.name}</div>
+                <div className="mt-0.5 flex items-center gap-2 text-[10px] text-white/70">
+                  <span>{model.imageCount || 0} image{(model.imageCount || 0) !== 1 ? 's' : ''}</span>
+                  {platforms.length > 0 && (
+                    <>
+                      <span>&middot;</span>
+                      <span className="inline-flex items-center gap-0.5">
+                        <Link2 className="h-2.5 w-2.5" />
+                        {platforms.length} account{platforms.length !== 1 ? 's' : ''}
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -137,7 +172,8 @@ export default function ModelGrid({
       {/* New model card */}
       <div
         onClick={onNewModel}
-        className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--border)] bg-[var(--surface)] p-8 transition-colors hover:border-[var(--primary)] hover:bg-[var(--accent)]"
+        className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--border)] bg-[var(--surface)] transition-colors hover:border-[var(--primary)] hover:bg-[var(--accent)]"
+        style={{ minHeight: '200px' }}
       >
         <div className="mb-2 text-3xl text-[var(--text-muted)]">+</div>
         <div className="text-sm font-medium text-[var(--text-muted)]">New Model</div>

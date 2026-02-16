@@ -5,6 +5,7 @@ import type { Profile } from '@/types';
 import { useToast } from '@/hooks/useToast';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
+import { getProfileInitials, getProfileAvatarClassFromProfile, getProfileAvatarClass } from './profileAvatar';
 
 export default function EditProfileModal({
   open,
@@ -18,7 +19,7 @@ export default function EditProfileModal({
   onSaved: (updated: Profile) => void;
 }) {
   const { showToast } = useToast();
-  const [form, setForm] = useState({ name: '', description: '', color: '#fcd34d' });
+  const [form, setForm] = useState({ name: '', description: '' });
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -26,7 +27,6 @@ export default function EditProfileModal({
       setForm({
         name: profile.name,
         description: profile.description || '',
-        color: profile.color || '#fcd34d',
       });
     }
   }, [profile, open]);
@@ -61,13 +61,27 @@ export default function EditProfileModal({
   return (
     <Modal open={open} onClose={onClose} title="Edit Profile" maxWidth="max-w-md">
       <div className="space-y-4 p-4">
+        <div className="flex items-center gap-3 rounded-xl bg-[var(--muted)] px-3 py-2">
+          <div
+            className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-sm font-semibold ${
+              profile ? getProfileAvatarClassFromProfile(profile) : getProfileAvatarClass(form.name || 'profile')
+            }`}
+          >
+            {getProfileInitials(form.name || profile?.name || 'P')}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{form.name || profile?.name || 'Profile'}</p>
+            <p className="truncate text-xs text-[var(--text-muted)]">{form.description || 'Update name or description'}</p>
+          </div>
+        </div>
+
         <div>
           <label className="mb-2 block text-sm text-[var(--text-muted)]">Profile Name</label>
           <input
             type="text"
             value={form.name}
             onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-            className="w-full rounded-lg border border-[var(--border)] px-4 py-2"
+            className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2.5"
           />
         </div>
         <div>
@@ -76,22 +90,13 @@ export default function EditProfileModal({
             type="text"
             value={form.description}
             onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-            className="w-full rounded-lg border border-[var(--border)] px-4 py-2"
-          />
-        </div>
-        <div>
-          <label className="mb-2 block text-sm text-[var(--text-muted)]">Color</label>
-          <input
-            type="color"
-            value={form.color}
-            onChange={(e) => setForm((p) => ({ ...p, color: e.target.value }))}
-            className="h-9 w-14 cursor-pointer rounded-lg border border-[var(--border)]"
+            className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2.5"
           />
         </div>
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--primary)] py-3 font-medium text-white hover:bg-[var(--primary-hover)] disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--master)] py-3 font-medium text-white hover:opacity-90 disabled:opacity-50"
         >
           {isSaving ? (
             <>

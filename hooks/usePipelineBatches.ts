@@ -44,7 +44,7 @@ export function usePipelineBatches() {
     const timeout = setTimeout(() => ac.abort(), FETCH_TIMEOUT);
 
     try {
-      const res = await fetch('/api/pipeline-batches', { signal: ac.signal, cache: 'default' });
+      const res = await fetch('/api/pipeline-batches', { signal: ac.signal, cache: 'no-store' });
       clearTimeout(timeout);
       if (!mountedRef.current) return;
       if (!res.ok) return;

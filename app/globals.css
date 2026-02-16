@@ -136,6 +136,40 @@ body {
   100% { transform: translateX(200%); }
 }
 
+@keyframes skeleton-breathe {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+
+@keyframes skeleton-sweep {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.5;
+  }
+  55% {
+    opacity: 0.2;
+  }
+  100% {
+    transform: translateX(220%);
+    opacity: 0;
+  }
+}
+
+.skeleton-breathe {
+  animation: skeleton-breathe 2.2s ease-in-out infinite;
+}
+
+.skeleton-sweep {
+  animation: skeleton-sweep 1.8s ease-in-out infinite;
+}
+
+.skeleton-sweep-soft {
+  animation: skeleton-sweep 2.6s ease-in-out 0.35s infinite;
+}
+
 .dark {
   --background: #212121;
   --foreground: #fafafa;

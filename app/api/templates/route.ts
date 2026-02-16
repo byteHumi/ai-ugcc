@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse, after } from 'next/server';
-import { createTemplateJob, getAllTemplateJobs, createPipelineBatch, updatePipelineBatch, initDatabase } from '@/lib/db';
+import {
+  createTemplateJob,
+  ensureDatabaseReady,
+  getAllTemplateJobs,
+  createPipelineBatch,
+  updatePipelineBatch,
+  initDatabase,
+} from '@/lib/db';
 import { processTemplateJob, processPipelineBatch } from '@/lib/processTemplateJob';
 import type { MiniAppStep, BatchVideoGenConfig, VideoGenConfig } from '@/types';
 import { auth } from '@/lib/auth';
@@ -9,7 +16,7 @@ export const maxDuration = 300; // 5 minutes — video processing needs more tha
 
 export async function GET() {
   try {
-    await initDatabase();
+    await ensureDatabaseReady();
     const jobs = await getAllTemplateJobs();
 
     // Return jobs immediately — no URL signing here.
@@ -28,7 +35,7 @@ export async function POST(request: NextRequest) {
   try {
     await initDatabase();
     const body = await request.json();
-    const { name, pipeline, videoSource, tiktokUrl, videoUrl } = body;
+    const { name, pipeline, tiktokUrl, videoUrl } = body;
 
     const session = await auth();
     const createdBy = session?.user?.name?.split(' ')[0] || null;

@@ -9,11 +9,20 @@ import { getCreatedDateDisplay, getScheduledDateDisplay } from '@/lib/dateUtils'
 import { derivePostStatus, isActiveStatus } from '@/lib/postStatus';
 import Spinner from '@/components/ui/Spinner';
 import Modal from '@/components/ui/Modal';
+import LoadingShimmer from '@/components/ui/LoadingShimmer';
 
 const PER_PAGE = 16;
 
 function postStatus(post: Post) {
   return post.derivedStatus || derivePostStatus(post);
+}
+
+function SkeletonCard() {
+  return (
+    <div className="relative aspect-[9/16] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+      <LoadingShimmer />
+    </div>
+  );
 }
 
 export default function PostList({
@@ -91,18 +100,8 @@ export default function PostList({
   if (isLoading) {
     return (
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
-        {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-          <div key={i} className="animate-pulse overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm">
-            <div className="bg-[var(--accent)]" style={{ aspectRatio: '9/16' }}>
-              <div className="flex h-full items-center justify-center">
-                <div className="h-6 w-6 rounded-full bg-[var(--border)]" />
-              </div>
-            </div>
-            <div className="p-2.5 space-y-1.5">
-              <div className="h-3 w-3/4 rounded bg-[var(--accent)]" />
-              <div className="h-2.5 w-1/2 rounded bg-[var(--accent)]" />
-            </div>
-          </div>
+        {Array.from({ length: 8 }).map((_, i) => (
+          <SkeletonCard key={i} />
         ))}
       </div>
     );
@@ -167,6 +166,7 @@ export default function PostList({
           const previewVideo = post.mediaItems?.[0]?.url || post.mediaItems?.[0]?.thumbnailUrl;
           const isActive = isActiveStatus(status);
           const isScheduled = status === 'scheduled';
+          const postAuthor = post.modelName || 'Unknown';
 
           return (
             <div
@@ -195,7 +195,7 @@ export default function PostList({
                     className="absolute inset-0 h-full w-full object-contain"
                     muted
                     playsInline
-                    preload="none"
+                    preload="metadata"
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center">
@@ -247,6 +247,9 @@ export default function PostList({
                     {getCreatedDateDisplay(post.createdAt)}
                   </p>
                 )}
+                <p className="mt-0.5 truncate text-[10px] text-[var(--text-muted)]">
+                  By {postAuthor}
+                </p>
               </div>
             </div>
           );
@@ -321,7 +324,7 @@ export default function PostList({
                     src={videoSrc}
                     controls
                     playsInline
-                    preload="none"
+                    preload="metadata"
                     className="absolute inset-0 h-full w-full object-contain"
                   />
                 ) : (
@@ -358,6 +361,9 @@ export default function PostList({
                 {livePost.content && (
                   <p className="text-xs text-[var(--text-muted)] line-clamp-3">{livePost.content}</p>
                 )}
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  By {livePost.modelName || 'Unknown'}
+                </p>
 
                 {/* Platforms */}
                 {livePost.platforms && livePost.platforms.length > 0 && (

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { Trash2 } from 'lucide-react';
 import type { GeneratedImage } from '@/types';
+import LoadingShimmer from '@/components/ui/LoadingShimmer';
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -14,18 +15,10 @@ function formatDate(iso: string) {
   });
 }
 
-function ShimmerFill() {
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden bg-[var(--accent)]">
-      <div className="absolute inset-y-0 -left-1/2 w-1/2 bg-gradient-to-r from-transparent via-white/70 to-transparent dark:via-white/20 animate-[shimmer_1.3s_linear_infinite]" />
-    </div>
-  );
-}
-
 function SkeletonCard() {
   return (
-    <div className="relative aspect-[3/4] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
-      <ShimmerFill />
+    <div className="relative aspect-[9/16] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+      <LoadingShimmer />
     </div>
   );
 }
@@ -38,13 +31,16 @@ export default function ImageGallery({
 }: {
   images: GeneratedImage[];
   isLoading: boolean;
-  onImageClick: (image: GeneratedImage) => void;
+  onImageClick: (image: GeneratedImage, loadedSrc?: string) => void;
   onDelete: (id: string) => void;
 }) {
   const [loadedById, setLoadedById] = useState<Record<string, true>>({});
+  const [loadedSrcById, setLoadedSrcById] = useState<Record<string, string>>({});
 
-  const markLoaded = (id: string) => {
+  const markLoaded = (id: string, src?: string) => {
     setLoadedById((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
+    if (!src) return;
+    setLoadedSrcById((prev) => (prev[id] === src ? prev : { ...prev, [id]: src }));
   };
 
   if (isLoading) {
@@ -78,9 +74,9 @@ export default function ImageGallery({
         <div
           key={image.id}
           className="group relative cursor-pointer overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] transition-shadow hover:shadow-lg"
-          onClick={() => onImageClick(image)}
+          onClick={() => onImageClick(image, loadedSrcById[image.id] || displayUrl)}
         >
-          <div className="relative aspect-[3/4] overflow-hidden bg-[var(--accent)]">
+          <div className="relative aspect-[9/16] overflow-hidden bg-[var(--accent)]">
             {displayUrl ? (
               <>
                 <Image
@@ -91,13 +87,13 @@ export default function ImageGallery({
                   quality={70}
                   sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                   className={`h-full w-full object-cover transition-[opacity,transform] duration-300 group-hover:scale-105 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-                  onLoad={() => markLoaded(image.id)}
+                  onLoad={(e) => markLoaded(image.id, e.currentTarget.currentSrc || e.currentTarget.src)}
                   onError={() => markLoaded(image.id)}
                 />
-                {!isLoaded && <ShimmerFill />}
+                {!isLoaded && <LoadingShimmer />}
               </>
             ) : (
-              <ShimmerFill />
+              <LoadingShimmer />
             )}
           </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useModels } from '@/hooks/useModels';
 import { useBatches } from '@/hooks/useBatches';
@@ -12,14 +12,8 @@ function GeneratePageContent() {
   const { models, modelImages, setModelImages, loadModelImages } = useModels();
   const { batches, refresh: refreshBatches } = useBatches();
 
-  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkMode, setBulkMode] = useState(() => searchParams.get('bulkMode') === 'true');
   const [uploadedImagePath, setUploadedImagePath] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (searchParams.get('bulkMode') === 'true') {
-      setBulkMode(true);
-    }
-  }, [searchParams]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

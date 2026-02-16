@@ -2,14 +2,23 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Download, Check, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { Send, Download, Check, Loader2, AlertCircle, ChevronLeft, ChevronRight, Play, Trash2 } from 'lucide-react';
 import type { TemplateJob, StepResult } from '@/types';
 import Spinner from '@/components/ui/Spinner';
 import StatusBadge from '@/components/ui/StatusBadge';
 import ProgressBar from '@/components/ui/ProgressBar';
 import Modal from '@/components/ui/Modal';
+import LoadingShimmer from '@/components/ui/LoadingShimmer';
 
 import { signUrls } from '@/lib/signedUrlClient';
+
+function SkeletonCard() {
+  return (
+    <div className="relative aspect-[9/16] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+      <LoadingShimmer />
+    </div>
+  );
+}
 
 function useSignedUrls(jobs: TemplateJob[]) {
   const [signedMap, setSignedMap] = useState<Record<string, string>>({});
@@ -20,23 +29,27 @@ function useSignedUrls(jobs: TemplateJob[]) {
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Batch-sign URLs for completed jobs
+  // Normalize + sign URLs for completed jobs.
   useEffect(() => {
     const needSigning = jobs.filter(
-      (j) => j.status === 'completed' && j.outputUrl?.includes('storage.googleapis.com') && !signedMap[j.id],
+      (job) =>
+        job.status === 'completed'
+        && !!job.outputUrl
+        && job.outputUrl.includes('storage.googleapis.com')
+        && !signedMap[job.id],
     );
     if (needSigning.length === 0) return;
 
     let cancelled = false;
 
     (async () => {
-      const urls = needSigning.map((j) => j.outputUrl!);
+      const urls = needSigning.map((job) => job.outputUrl!);
       const signed = await signUrls(urls);
       if (cancelled || !mountedRef.current) return;
       const updates: Record<string, string> = {};
-      for (const j of needSigning) {
-        const url = signed.get(j.outputUrl!);
-        if (url) updates[j.id] = url;
+      for (const job of needSigning) {
+        const url = signed.get(job.outputUrl!);
+        if (url) updates[job.id] = url;
       }
       if (Object.keys(updates).length > 0) {
         setSignedMap((prev) => ({ ...prev, ...updates }));
@@ -47,21 +60,17 @@ function useSignedUrls(jobs: TemplateJob[]) {
   }, [jobs, signedMap]);
 
   const getSignedUrl = useCallback(
-    (job: TemplateJob) => signedMap[job.id] || undefined,
+    (job: TemplateJob) => {
+      if (signedMap[job.id]) return signedMap[job.id];
+      if (job.signedUrl) return job.signedUrl;
+      if (job.outputUrl && !job.outputUrl.includes('storage.googleapis.com')) return job.outputUrl;
+      return undefined;
+    },
     [signedMap],
   );
 
   return { getSignedUrl };
 }
-
-const stepIcon = (status: 'done' | 'active' | 'pending' | 'disabled') => {
-  switch (status) {
-    case 'done':     return <Check className="h-3 w-3 text-emerald-500" />;
-    case 'active':   return <Loader2 className="h-3 w-3 animate-spin text-blue-500" />;
-    case 'disabled': return <span className="h-3 w-3 rounded-full border border-dashed border-[var(--border)]" />;
-    default:         return <span className="h-3 w-3 rounded-full border border-[var(--border)]" />;
-  }
-};
 
 const PER_PAGE = 16;
 
@@ -69,14 +78,21 @@ export default function TemplateJobList({ jobs, loading }: { jobs: TemplateJob[]
   const router = useRouter();
   const [selectedJob, setSelectedJob] = useState<TemplateJob | null>(null);
   const [page, setPage] = useState(1);
+  const [loadedById, setLoadedById] = useState<Record<string, true>>({});
+  const [deletingQueuedIds, setDeletingQueuedIds] = useState<Record<string, true>>({});
+  const [hiddenJobIds, setHiddenJobIds] = useState<Record<string, true>>({});
   // null = show final output, string = stepId to show
   const [viewingStepId, setViewingStepId] = useState<string | null>(null);
   const { getSignedUrl } = useSignedUrls(jobs);
 
+  const markLoaded = (id: string) => {
+    setLoadedById((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
+  };
+
   // When a job is selected, fetch full signed details (incl. step result URLs)
   const [modalJob, setModalJob] = useState<TemplateJob | null>(null);
   useEffect(() => {
-    if (!selectedJob) { setModalJob(null); return; }
+    if (!selectedJob) return;
     let cancelled = false;
     (async () => {
       try {
@@ -93,32 +109,54 @@ export default function TemplateJobList({ jobs, loading }: { jobs: TemplateJob[]
   const polledJob = selectedJob ? jobs.find((j) => j.id === selectedJob.id) : null;
   const liveJob = modalJob && modalJob.id === selectedJob?.id ? modalJob : polledJob ?? selectedJob;
 
-  const totalPages = Math.max(1, Math.ceil(jobs.length / PER_PAGE));
+  const visibleJobs = useMemo(
+    () => jobs.filter((job) => !hiddenJobIds[job.id]),
+    [jobs, hiddenJobIds],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(visibleJobs.length / PER_PAGE));
   const safePage = Math.min(page, totalPages);
   const paginatedJobs = useMemo(
-    () => jobs.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE),
-    [jobs, safePage],
+    () => visibleJobs.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE),
+    [visibleJobs, safePage],
   );
+
+  const handleDeleteQueued = useCallback(async (jobId: string) => {
+    setDeletingQueuedIds((prev) => ({ ...prev, [jobId]: true }));
+    try {
+      const res = await fetch(`/api/templates/${jobId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || 'Failed to delete queued job');
+      }
+      setHiddenJobIds((prev) => ({ ...prev, [jobId]: true }));
+      if (selectedJob?.id === jobId) {
+        setSelectedJob(null);
+        setModalJob(null);
+        setViewingStepId(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete queued job:', error);
+    } finally {
+      setDeletingQueuedIds((prev) => {
+        const next = { ...prev };
+        delete next[jobId];
+        return next;
+      });
+    }
+  }, [selectedJob]);
 
   if (loading) {
     return (
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="animate-pulse overflow-hidden rounded-xl shadow-sm">
-            <div className="bg-[var(--surface)]" style={{ aspectRatio: '9/16' }}>
-              <div className="h-full w-full bg-[var(--background)]" />
-            </div>
-            <div className="bg-[var(--surface)] px-2.5 py-2 space-y-1.5">
-              <div className="h-3 w-3/4 rounded bg-[var(--background)]" />
-              <div className="h-2.5 w-1/2 rounded bg-[var(--background)]" />
-            </div>
-          </div>
+        {Array.from({ length: 8 }).map((_, i) => (
+          <SkeletonCard key={i} />
         ))}
       </div>
     );
   }
 
-  if (jobs.length === 0) {
+  if (visibleJobs.length === 0) {
     return (
       <div className="rounded-xl bg-[var(--surface)] p-8 text-center shadow-sm backdrop-blur-xl">
         <p className="text-[var(--text-muted)]">No pipeline jobs yet</p>
@@ -131,80 +169,109 @@ export default function TemplateJobList({ jobs, loading }: { jobs: TemplateJob[]
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         {paginatedJobs.map((job) => {
           const isActive = job.status === 'queued' || job.status === 'processing';
+          const isFailedCard = job.status === 'failed';
+          const isQueued = job.status === 'queued';
+          const isDeletingQueued = !!deletingQueuedIds[job.id];
           const resolvedUrl = getSignedUrl(job);
-          const hasVideo = job.status === 'completed' && job.outputUrl;
+          const hasVideo = job.status === 'completed' && !!(job.signedUrl || job.outputUrl);
           const videoReady = hasVideo && resolvedUrl;
           const progress = job.totalSteps > 0 ? Math.round((job.currentStep / job.totalSteps) * 100) : 0;
+          const isLoaded = !!loadedById[job.id];
 
           return (
             <div
               key={job.id}
               onClick={() => setSelectedJob(job)}
-              className={`group cursor-pointer overflow-hidden rounded-xl shadow-sm transition-all hover:shadow-lg ${
-                isActive ? 'ring-1 ring-blue-300' : ''
+              className={`group relative cursor-pointer overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] transition-shadow hover:shadow-lg ${
+                isActive ? 'ring-1 ring-[var(--primary)]/50' : ''
               }`}
             >
               {/* Thumbnail — 9:16 */}
               <div
-                className="relative w-full bg-black/90"
+                className="relative w-full overflow-hidden bg-[var(--accent)]"
                 style={{ aspectRatio: '9/16' }}
               >
                 {videoReady ? (
-                  <video
-                    src={resolvedUrl}
-                    className="absolute inset-0 h-full w-full object-contain"
-                    muted
-                    playsInline
-                    preload="none"
-                  />
+                  <>
+                    <video
+                      src={resolvedUrl}
+                      className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      onLoadedMetadata={() => markLoaded(job.id)}
+                      onError={() => markLoaded(job.id)}
+                    />
+                    {!isLoaded && <LoadingShimmer />}
+                  </>
+                ) : isFailedCard ? (
+                  <>
+                    <div className="absolute inset-0 bg-black/85" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <AlertCircle className="h-5 w-5 text-red-500/90" />
+                    </div>
+                  </>
                 ) : hasVideo && !resolvedUrl ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-                    <div className="h-5 w-5 rounded-full border-2 border-white/20 border-t-white/60 animate-spin" />
-                    <span className="text-[9px] text-white/40">Loading</span>
-                  </div>
+                  <LoadingShimmer />
                 ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    {isActive ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-blue-400" />
-                    ) : job.status === 'failed' ? (
-                      <AlertCircle className="h-5 w-5 text-red-400" />
-                    ) : (
-                      <span className="text-[10px] text-white/40">Queued</span>
-                    )}
-                  </div>
+                  <>
+                    <LoadingShimmer />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      {isActive ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-[var(--primary)]" />
+                      ) : (
+                        <span className="text-[10px] font-medium text-[var(--text-muted)]">Queued</span>
+                      )}
+                    </div>
+                  </>
                 )}
 
                 {/* Status overlay */}
                 <div className="absolute left-1.5 top-1.5">
                   <StatusBadge status={job.status} />
                 </div>
-
-                {/* Active progress overlay */}
-                {isActive && (
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 pt-6">
-                    <div className="mb-1 flex items-center gap-1 text-[9px] text-white/80">
-                      <Spinner className="h-2.5 w-2.5" />
-                      <span className="truncate">{job.step}</span>
-                    </div>
-                    <ProgressBar progress={progress} size="sm" />
-                  </div>
+                {isQueued && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDeleteQueued(job.id);
+                    }}
+                    disabled={isDeletingQueued}
+                    className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-md bg-black/60 text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-70"
+                    aria-label="Delete queued job"
+                  >
+                    {isDeletingQueued ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
                 )}
-              </div>
 
-              {/* Info bar */}
-              <div className="bg-[var(--surface)] px-2.5 py-2">
-                <p className="truncate text-xs font-medium">{job.name}</p>
-                <p className="mt-0.5 truncate text-[10px] text-[var(--text-muted)]">
-                  {job.createdAt && (
-                    <>
-                      {new Date(job.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })},{' '}
-                      {new Date(job.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                    </>
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent px-2 pb-1.5 pt-8">
+                  {isActive && (
+                    <div className="mb-1.5">
+                      <div className="mb-1 flex items-center gap-1 text-[9px] text-white/85">
+                        <Spinner className="h-2.5 w-2.5" />
+                        <span className="truncate">{job.step}</span>
+                      </div>
+                      <ProgressBar progress={progress} size="sm" />
+                    </div>
                   )}
-                  {job.createdBy && (
-                    <span className="ml-1 opacity-70">&middot; By {job.createdBy}</span>
-                  )}
-                </p>
+                  <p className="truncate text-[11px] font-medium text-white/95">{job.name}</p>
+                  <p className="truncate text-[10px] text-white/75">
+                    {job.createdAt && (
+                      <>
+                        {new Date(job.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })},{' '}
+                        {new Date(job.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                      </>
+                    )}
+                  </p>
+                  <p className="truncate text-[10px] text-white/68">
+                    By {job.createdBy || 'Unknown'}
+                  </p>
+                </div>
               </div>
             </div>
           );
@@ -262,7 +329,7 @@ export default function TemplateJobList({ jobs, loading }: { jobs: TemplateJob[]
           const progress = enabledSteps.length > 0
             ? Math.round((completedSteps / enabledSteps.length) * 100)
             : 0;
-          const finalVideoSrc = getSignedUrl(liveJob) || liveJob.outputUrl;
+          const finalVideoSrc = liveJob.signedUrl || getSignedUrl(liveJob) || liveJob.outputUrl;
           const stepResults: StepResult[] = liveJob.stepResults || [];
 
           // Determine which video to show
@@ -291,14 +358,14 @@ export default function TemplateJobList({ jobs, loading }: { jobs: TemplateJob[]
                     src={activeVideoSrc}
                     controls
                     playsInline
-                    preload="none"
+                    preload="metadata"
                     className="absolute inset-0 h-full w-full object-contain"
                   />
                 ) : (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                     {isActive ? (
                       <>
-                        <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+                        <Loader2 className="h-6 w-6 animate-spin text-[var(--primary)]" />
                         <span className="text-xs text-white/60">{liveJob.step || 'Processing...'}</span>
                       </>
                     ) : isFailed ? (
@@ -374,8 +441,8 @@ export default function TemplateJobList({ jobs, loading }: { jobs: TemplateJob[]
                         >
                           <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold"
                             style={{
-                              backgroundColor: isViewing ? 'rgba(255,255,255,0.2)' : st === 'done' ? 'rgba(34,197,94,0.15)' : st === 'active' ? 'rgba(59,130,246,0.15)' : 'rgba(0,0,0,0.05)',
-                              color: isViewing ? 'white' : st === 'done' ? '#22c55e' : st === 'active' ? '#3b82f6' : 'var(--text-muted)',
+                              backgroundColor: isViewing ? 'rgba(255,255,255,0.2)' : st === 'done' ? 'rgba(34,197,94,0.15)' : st === 'active' ? 'var(--accent)' : 'rgba(0,0,0,0.05)',
+                              color: isViewing ? 'white' : st === 'done' ? '#22c55e' : st === 'active' ? 'var(--primary)' : 'var(--text-muted)',
                             }}
                           >
                             {st === 'done' ? <Check className="h-3 w-3" /> : st === 'active' ? <Loader2 className="h-3 w-3 animate-spin" /> : i + 1}

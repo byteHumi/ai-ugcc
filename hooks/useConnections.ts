@@ -11,12 +11,21 @@ let _profilesCache: Profile[] = [];
 let _accountsCache: Account[] = [];
 let _cacheTime = 0;
 
+function getProfileIdFromAccount(account: Account): string | undefined {
+  if (!account?.profileId) return undefined;
+  if (typeof account.profileId === 'object') return account.profileId._id;
+  return account.profileId;
+}
+
 export function useConnections() {
   const isPageVisible = usePageVisibility();
   const [profiles, setProfiles] = useState<Profile[]>(_profilesCache);
   const [accounts, setAccounts] = useState<Account[]>(_accountsCache);
-  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
+    _profilesCache.length > 0 ? _profilesCache[0]._id : null,
+  );
   const [isLoadingPage, setIsLoadingPage] = useState(_profilesCache.length === 0);
+  const [refreshing, setRefreshing] = useState(false);
   const wasVisibleRef = useRef(isPageVisible);
 
   const loadConnections = useCallback(async (force = false) => {
@@ -24,16 +33,15 @@ export function useConnections() {
     if (!force && _profilesCache.length > 0 && now - _cacheTime < REFRESH_INTERVAL) {
       setProfiles(_profilesCache);
       setAccounts(_accountsCache);
-      if (_profilesCache.length && !currentProfile) {
-        setCurrentProfile(_profilesCache[0]);
-      }
+      setSelectedProfileId((prev) => prev ?? (_profilesCache[0]?._id ?? null));
       setIsLoadingPage(false);
       return;
     }
+    if (force) setRefreshing(true);
     try {
       const [profilesRes, accountsRes] = await Promise.all([
-        fetch('/api/late/profiles'),
-        fetch('/api/late/accounts'),
+        fetch('/api/late/profiles', { cache: 'no-store' }),
+        fetch('/api/late/accounts', { cache: 'no-store' }),
       ]);
       const profilesData = await profilesRes.json();
       const accountsData = await accountsRes.json();
@@ -44,15 +52,18 @@ export function useConnections() {
       _cacheTime = Date.now();
       setProfiles(p);
       setAccounts(a);
-      if (p.length && !currentProfile) {
-        setCurrentProfile(p[0]);
-      }
+      setSelectedProfileId((prev) => {
+        if (!p.length) return null;
+        if (!prev) return p[0]._id;
+        return p.some((profile: Profile) => profile._id === prev) ? prev : p[0]._id;
+      });
     } catch (e) {
       console.error('Failed to load connections:', e);
     } finally {
       setIsLoadingPage(false);
+      if (force) setRefreshing(false);
     }
-  }, [currentProfile]);
+  }, []);
 
   // Initial load (uses cache if fresh)
   useEffect(() => {
@@ -74,14 +85,17 @@ export function useConnections() {
     }
   }, [isPageVisible, loadConnections]);
 
-  const profileAccounts = accounts.filter((a) => {
-    const pId = typeof a.profileId === 'object' ? (a.profileId as { _id: string })?._id : a.profileId;
-    return pId === currentProfile?._id;
-  });
+  const currentProfile = profiles.find((profile) => profile._id === selectedProfileId) || null;
+
+  const profileAccounts = accounts.filter((account) => getProfileIdFromAccount(account) === currentProfile?._id);
 
   const tiktokAccounts = accounts.filter((a) => a.platform === 'tiktok');
 
   const refresh = useCallback(() => loadConnections(true), [loadConnections]);
+
+  const setCurrentProfile = useCallback((profile: Profile | null) => {
+    setSelectedProfileId(profile?._id ?? null);
+  }, []);
 
   return {
     profiles,
@@ -91,6 +105,7 @@ export function useConnections() {
     profileAccounts,
     tiktokAccounts,
     isLoadingPage,
+    refreshing,
     refresh,
   };
 }
