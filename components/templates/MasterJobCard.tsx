@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2, CheckCircle2, XCircle, AlertCircle, Check, ThumbsUp, ThumbsDown, RotateCcw, Copy, Pencil } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, AlertCircle, Check, ThumbsUp, ThumbsDown, RotateCcw, Copy, Pencil, Send } from 'lucide-react';
 import type { TemplateJob } from '@/types';
 
 export default function MasterJobCard({
@@ -12,6 +12,7 @@ export default function MasterJobCard({
   onClick,
   onApprove,
   onReject,
+  onRepost,
   onQuickRegenerate,
   onEditRegenerate,
   isApproving,
@@ -26,6 +27,7 @@ export default function MasterJobCard({
   onClick: () => void;
   onApprove?: () => void;
   onReject?: () => void;
+  onRepost?: () => void;
   onQuickRegenerate?: () => void;
   onEditRegenerate?: () => void;
   isApproving?: boolean;
@@ -37,6 +39,7 @@ export default function MasterJobCard({
   const isProcessing = job.status === 'processing' || job.status === 'queued';
   const hasOutput = !!job.outputUrl || !!job.signedUrl;
   const canAct = isCompleted && !job.postStatus;
+  const canRepost = isCompleted && job.postStatus === 'posted';
   const canRegenerate = (isCompleted || isFailed) && !isProcessing;
   const isBusy = isApproving || isRejecting || isRegenerating;
 
@@ -162,7 +165,7 @@ export default function MasterJobCard({
           </div>
         </div>
         {/* Action buttons row */}
-        {(canAct || canRegenerate) && !isBusy && (
+        {(canAct || canRepost || canRegenerate) && !isBusy && (
           <div className="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-[var(--border)]">
             {canRegenerate && (
               <>
@@ -201,6 +204,16 @@ export default function MasterJobCard({
                   <ThumbsDown className="h-3 w-3" />
                 </button>
               </>
+            )}
+            {canRepost && onRepost && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onRepost(); }}
+                className="flex h-6 flex-1 items-center justify-center gap-1 rounded-md bg-master/10 text-master transition-colors hover:bg-master/20 dark:text-master-foreground text-[10px] font-medium"
+                title="Repost to social accounts"
+              >
+                <Send className="h-3 w-3" />
+                Repost
+              </button>
             )}
           </div>
         )}

@@ -68,7 +68,7 @@ export async function POST(
     await initDatabase();
 
     const body = await request.json();
-    const { jobIds } = body as { jobIds: string[] };
+    const { jobIds, force } = body as { jobIds: string[]; force?: boolean };
 
     if (!jobIds || !Array.isArray(jobIds) || jobIds.length === 0) {
       return NextResponse.json({ error: 'jobIds array is required' }, { status: 400 });
@@ -112,8 +112,8 @@ export async function POST(
           continue;
         }
 
-        // Skip jobs that have already been posted to avoid duplicate posts
-        if (job.postStatus === 'posted') {
+        // Skip jobs that have already been posted to avoid duplicate posts (unless force=true for repost)
+        if (job.postStatus === 'posted' && !force) {
           log('JOB', `Job ${jobId}: already posted, skipping to avoid duplicate`);
           results.push({ jobId, modelId: job.modelId, status: 'skipped', error: 'Already posted' });
           continue;

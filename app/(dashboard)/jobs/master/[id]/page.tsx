@@ -42,9 +42,9 @@ export default function MasterBatchDetailPage() {
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
   const [modalJob, setModalJob] = useState<TemplateJob | null>(null);
   const [posting, setPosting] = useState(false);
-  const [approvingJobId, setApprovingJobId] = useState<string | null>(null);
-  const [rejectingJobId, setRejectingJobId] = useState<string | null>(null);
-  const [regeneratingJobId, setRegeneratingJobId] = useState<string | null>(null);
+  const [busyJobIds, setBusyJobIds] = useState<Set<string>>(new Set());
+  const addBusy = (jid: string) => setBusyJobIds(prev => new Set(prev).add(jid));
+  const removeBusy = (jid: string) => setBusyJobIds(prev => { const next = new Set(prev); next.delete(jid); return next; });
   const [regenerateJob, setRegenerateJob] = useState<TemplateJob | null>(null);
 
   const [signedModelImages, setSignedModelImages] = useState<Record<string, string>>({});
@@ -171,18 +171,7 @@ export default function MasterBatchDetailPage() {
     try {
       const ids = Array.from(selectedJobIds);
 
-      // 1. Tag all as approved immediately
-      await Promise.all(
-        ids.map((jobId) =>
-          fetch(`/api/templates/${jobId}/post-status`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ postStatus: 'posted' }),
-          })
-        )
-      );
-
-      // 2. Try to post via Late API
+      // 1. Try to post via Late API first
       try {
         const res = await fetch(`/api/templates/master/${id}/post`, {
           method: 'POST',
@@ -198,6 +187,17 @@ export default function MasterBatchDetailPage() {
       } catch {
         showToast(`Approved ${ids.length} video${ids.length > 1 ? 's' : ''}!`, 'success');
       }
+
+      // 2. Tag any remaining jobs as approved (post API already tags posted ones)
+      await Promise.all(
+        ids.map((jobId) =>
+          fetch(`/api/templates/${jobId}/post-status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ postStatus: 'posted' }),
+          })
+        )
+      );
 
       setSelectedJobIds(new Set());
       await loadBatch();
@@ -223,20 +223,11 @@ export default function MasterBatchDetailPage() {
   };
 
   const handleSinglePost = async (jobId: string) => {
-    // Guard: prevent double-approve
     const job = jobs.find(j => j.id === jobId);
-    if (job?.postStatus === 'posted' || approvingJobId) return;
+    if (job?.postStatus === 'posted' || busyJobIds.has(jobId)) return;
 
-    setApprovingJobId(jobId);
+    addBusy(jobId);
     try {
-      // 1. Tag as approved immediately
-      await fetch(`/api/templates/${jobId}/post-status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ postStatus: 'posted' }),
-      });
-
-      // 2. Try to actually post via Late API (server also guards against duplicates)
       try {
         const res = await fetch(`/api/templates/master/${id}/post`, {
           method: 'POST',
@@ -247,11 +238,26 @@ export default function MasterBatchDetailPage() {
         if (res.ok && data.summary?.posted > 0) {
           showToast('Approved & posted!', 'success');
         } else if (res.ok && data.summary?.skipped > 0) {
+          await fetch(`/api/templates/${jobId}/post-status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ postStatus: 'posted' }),
+          });
           showToast('Approved! No social accounts linked — go to /models to link accounts.', 'success');
         } else {
+          await fetch(`/api/templates/${jobId}/post-status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ postStatus: 'posted' }),
+          });
           showToast('Approved!', 'success');
         }
       } catch {
+        await fetch(`/api/templates/${jobId}/post-status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ postStatus: 'posted' }),
+        });
         showToast('Approved!', 'success');
       }
 
@@ -260,12 +266,38 @@ export default function MasterBatchDetailPage() {
     } catch {
       showToast('Failed to approve', 'error');
     } finally {
-      setApprovingJobId(null);
+      removeBusy(jobId);
+    }
+  };
+
+  const handleRepost = async (jobId: string) => {
+    if (busyJobIds.has(jobId)) return;
+    addBusy(jobId);
+    try {
+      const res = await fetch(`/api/templates/master/${id}/post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobIds: [jobId], force: true }),
+      });
+      const data = await res.json();
+      if (res.ok && data.summary?.posted > 0) {
+        showToast('Reposted successfully!', 'success');
+      } else if (res.ok && data.summary?.skipped > 0) {
+        showToast('No social accounts linked — go to /models to link accounts.', 'error');
+      } else {
+        showToast('Failed to repost', 'error');
+      }
+      setModalJob(null);
+      await loadBatch();
+    } catch {
+      showToast('Failed to repost', 'error');
+    } finally {
+      removeBusy(jobId);
     }
   };
 
   const handleQuickRegenerate = async (jobId: string) => {
-    setRegeneratingJobId(jobId);
+    addBusy(jobId);
     try {
       const res = await fetch(`/api/templates/${jobId}/regenerate`, {
         method: 'POST',
@@ -283,7 +315,7 @@ export default function MasterBatchDetailPage() {
     } catch {
       showToast('Failed to regenerate', 'error');
     } finally {
-      setRegeneratingJobId(null);
+      removeBusy(jobId);
     }
   };
 
@@ -293,7 +325,7 @@ export default function MasterBatchDetailPage() {
 
   const handleEditRegenerate = async (jobId: string, overrides?: { imageUrl?: string; imageId?: string }) => {
     setRegenerateJob(null);
-    setRegeneratingJobId(jobId);
+    addBusy(jobId);
     try {
       const res = await fetch(`/api/templates/${jobId}/regenerate`, {
         method: 'POST',
@@ -311,12 +343,12 @@ export default function MasterBatchDetailPage() {
     } catch {
       showToast('Failed to regenerate', 'error');
     } finally {
-      setRegeneratingJobId(null);
+      removeBusy(jobId);
     }
   };
 
   const handleSingleReject = async (jobId: string) => {
-    setRejectingJobId(jobId);
+    addBusy(jobId);
     try {
       await fetch(`/api/templates/${jobId}/post-status`, {
         method: 'PATCH',
@@ -329,7 +361,7 @@ export default function MasterBatchDetailPage() {
     } catch {
       showToast('Failed to reject', 'error');
     } finally {
-      setRejectingJobId(null);
+      removeBusy(jobId);
     }
   };
 
@@ -457,17 +489,7 @@ export default function MasterBatchDetailPage() {
                   setPosting(true);
                   try {
                     const ids = selectableJobs.map(j => j.id);
-                    // Tag all as approved
-                    await Promise.all(
-                      ids.map((jobId) =>
-                        fetch(`/api/templates/${jobId}/post-status`, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ postStatus: 'posted' }),
-                        })
-                      )
-                    );
-                    // Try posting via Late API
+                    // Try posting via Late API first
                     try {
                       const res = await fetch(`/api/templates/master/${id}/post`, {
                         method: 'POST',
@@ -483,6 +505,16 @@ export default function MasterBatchDetailPage() {
                     } catch {
                       showToast(`Approved all ${ids.length} videos!`, 'success');
                     }
+                    // Tag remaining as approved
+                    await Promise.all(
+                      ids.map((jobId) =>
+                        fetch(`/api/templates/${jobId}/post-status`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ postStatus: 'posted' }),
+                        })
+                      )
+                    );
                     await loadBatch();
                   } catch {
                     showToast('Failed to approve all', 'error');
@@ -521,11 +553,12 @@ export default function MasterBatchDetailPage() {
               onClick={() => setModalJob(job)}
               onApprove={() => handleSinglePost(job.id)}
               onReject={() => handleSingleReject(job.id)}
+              onRepost={() => handleRepost(job.id)}
               onQuickRegenerate={() => handleQuickRegenerate(job.id)}
               onEditRegenerate={() => openRegenerateModal(job)}
-              isApproving={approvingJobId === job.id}
-              isRejecting={rejectingJobId === job.id}
-              isRegenerating={regeneratingJobId === job.id}
+              isApproving={busyJobIds.has(job.id)}
+              isRejecting={false}
+              isRegenerating={false}
             />
           ))}
         </div>
@@ -572,11 +605,12 @@ export default function MasterBatchDetailPage() {
             modelInfo={modelInfoWithSignedImage}
             onClose={() => setModalJob(null)}
             onPost={() => handleSinglePost(modalJob.id)}
+            onRepost={() => handleRepost(modalJob.id)}
             onReject={() => handleSingleReject(modalJob.id)}
             onQuickRegenerate={() => handleQuickRegenerate(modalJob.id)}
             onEditRegenerate={() => openRegenerateModal(modalJob)}
-            posting={approvingJobId === modalJob.id}
-            regenerating={regeneratingJobId === modalJob.id}
+            posting={busyJobIds.has(modalJob.id)}
+            regenerating={false}
             postRecords={jobPosts[modalJob.id]}
           />
         );

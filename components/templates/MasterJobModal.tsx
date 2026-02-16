@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Download, ThumbsUp, XCircle, CheckCircle2, Loader2, ExternalLink, RotateCcw, Copy, Pencil } from 'lucide-react';
+import { X, Download, ThumbsUp, XCircle, CheckCircle2, Loader2, ExternalLink, RotateCcw, Copy, Pencil, Send } from 'lucide-react';
 import type { TemplateJob, MasterConfigModel } from '@/types';
 
 type PostRecord = {
@@ -31,6 +31,7 @@ export default function MasterJobModal({
   modelInfo,
   onClose,
   onPost,
+  onRepost,
   onReject,
   onQuickRegenerate,
   onEditRegenerate,
@@ -42,6 +43,7 @@ export default function MasterJobModal({
   modelInfo?: MasterConfigModel;
   onClose: () => void;
   onPost: () => void;
+  onRepost?: () => void;
   onReject: () => void;
   onQuickRegenerate?: () => void;
   onEditRegenerate?: () => void;
@@ -208,6 +210,16 @@ export default function MasterJobModal({
                   Approve
                 </button>
               </>
+            )}
+            {isCompleted && job.postStatus === 'posted' && onRepost && (
+              <button
+                onClick={onRepost}
+                disabled={isBusy}
+                className="flex items-center gap-1.5 rounded-lg bg-master px-4 py-2 text-xs font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 dark:text-master-foreground"
+              >
+                {posting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                Repost
+              </button>
             )}
           </div>
         )}
