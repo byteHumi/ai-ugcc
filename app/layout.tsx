@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans } from "next/font/google";
+import { DM_Sans, Space_Grotesk } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import AuthSessionProvider from "@/components/auth/SessionProvider";
 import "./globals.css";
@@ -7,6 +7,12 @@ import "./globals.css";
 const dmSans = DM_Sans({
   subsets: ["latin"],
   variable: "--font-geist-sans",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-brand",
   display: "swap",
 });
 
@@ -22,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${dmSans.variable} antialiased`}>
+      <body className={`${dmSans.variable} ${spaceGrotesk.variable} antialiased`}>
         <AuthSessionProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
             {children}

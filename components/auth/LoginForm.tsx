@@ -13,11 +13,10 @@ function LoginFormInner() {
       <div className="w-full max-w-sm space-y-8 rounded-xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-8 shadow-lg">
         <div className="text-center">
           <h1
-            style={{ fontFamily: "'Syne', sans-serif" }}
-            className="text-2xl font-extrabold tracking-tight text-[var(--text-primary)]"
+            className="font-[family-name:var(--font-brand)] text-3xl font-bold tracking-tight text-[var(--text-primary)]"
           >
             Runable
-            <span className="ml-1.5 text-xs font-bold tracking-[0.15em] uppercase text-[var(--primary)]">
+            <span className="ml-2 text-xs font-semibold tracking-[0.15em] uppercase text-[var(--primary)]">
               AI UGC
             </span>
           </h1>

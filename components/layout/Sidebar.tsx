@@ -64,10 +64,10 @@ export default function AppSidebar() {
       {/* Header — branding when expanded, toggle when collapsed */}
       <SidebarHeader className="h-14 flex-row items-center justify-between border-b border-[var(--sidebar-border)] px-3">
         <Link href="/generate" className="group-data-[collapsible=icon]:hidden inline-flex items-start">
-          <span style={{ fontFamily: "'Syne', sans-serif" }} className="text-base font-extrabold tracking-tight leading-none">
+          <span className="font-[family-name:var(--font-brand)] text-base font-bold tracking-tight leading-none">
             Runable
           </span>
-          <span className="ml-1 -mt-0.5 text-[7px] font-bold tracking-[0.15em] uppercase text-[var(--primary)] leading-none">
+          <span className="ml-1 -mt-0.5 text-[7px] font-semibold tracking-[0.15em] uppercase text-[var(--primary)] leading-none">
             AI UGC
           </span>
         </Link>
