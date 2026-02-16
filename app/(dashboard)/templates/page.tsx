@@ -67,7 +67,6 @@ export default function TemplatesPage() {
   // Resolve pasted URL to a playable video URL for preview
   useEffect(() => {
     if (videoSource !== 'tiktok' || !tiktokUrl.trim()) {
-      // Don't clear previewUrl if it came from an upload
       if (videoSource === 'tiktok') setPreviewUrl('');
       return;
     }
@@ -96,7 +95,7 @@ export default function TemplatesPage() {
         })
         .catch(() => {})
         .finally(() => setIsResolvingPreview(false));
-    }, 800); // debounce 800ms
+    }, 800);
 
     return () => {
       clearTimeout(timer);
@@ -151,7 +150,6 @@ export default function TemplatesPage() {
   }, [panelWidth]);
 
   const handleVideoFile = useCallback(async (file: File) => {
-    // Detect video duration from the file
     const objectUrl = URL.createObjectURL(file);
     const vid = document.createElement('video');
     vid.preload = 'metadata';
@@ -191,7 +189,6 @@ export default function TemplatesPage() {
   };
 
   const handleLoadPreset = (pipeline: MiniAppStep[]) => {
-    // Generate new IDs so each load is independent
     const newSteps = pipeline.map((s) => ({
       ...s,
       id: `step-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -247,7 +244,6 @@ export default function TemplatesPage() {
       }
     }
 
-    // Validate each enabled step has required fields
     const errors = new Map<string, string>();
     for (const s of enabledSteps) {
       switch (s.type) {
@@ -308,7 +304,6 @@ export default function TemplatesPage() {
 
       const data = await res.json();
       const isBatch = data.isBatch === true;
-      // Store new job so /jobs page shows it instantly (only for single pipelines)
       if (!isBatch) {
         try {
           sessionStorage.setItem('ai-ugc-new-job', JSON.stringify(data));
@@ -362,7 +357,7 @@ export default function TemplatesPage() {
             </button>
           </div>
 
-          {/* Run button — separate, prominent */}
+          {/* Run button */}
           <button
             onClick={handleRun}
             disabled={isSubmitting || steps.filter((s) => s.enabled).length === 0}
@@ -393,7 +388,6 @@ export default function TemplatesPage() {
         {/* Right: Config Panel (resizable) */}
         {panelOpen && (
           <>
-            {/* Mobile overlay backdrop */}
             {isMobile && (
               <div
                 className="fixed inset-0 z-30 bg-black/30"
@@ -409,7 +403,6 @@ export default function TemplatesPage() {
               }`}
               style={isMobile ? undefined : { width: panelWidth }}
             >
-              {/* Drag handle — slim pill slider */}
               {!isMobile && (
                 <div
                   onMouseDown={onDragStart}

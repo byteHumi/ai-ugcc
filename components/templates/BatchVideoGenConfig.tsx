@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useModels } from '@/hooks/useModels';
-import { X, Clock, Monitor, Volume2, VolumeX, ChevronDown, Check, RefreshCw, Expand } from 'lucide-react';
+import { X, Clock, Monitor, Volume2, VolumeX, ChevronDown, Check, RefreshCw, Expand, User } from 'lucide-react';
 import PreviewModal from '@/components/ui/PreviewModal';
 import type { BatchVideoGenConfig as BVGC, BatchImageEntry, ModelImage } from '@/types';
 
@@ -96,13 +96,14 @@ function Dropdown({
 }
 
 export default function BatchVideoGenConfig({
-  config, onChange, sourceDuration, sourceVideoUrl, stepId,
+  config, onChange, sourceDuration, sourceVideoUrl, stepId, masterMode,
 }: {
   config: BVGC;
   onChange: (c: BVGC) => void;
   sourceDuration?: number;
   sourceVideoUrl?: string;
   stepId?: string;
+  masterMode?: boolean;
 }) {
   const { models, modelImages, imagesLoading, loadModelImages } = useModels();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -417,6 +418,22 @@ export default function BatchVideoGenConfig({
         </p>
       </div>
 
+      {/* Master mode: auto-inject message */}
+      {masterMode ? (
+        <div className="rounded-xl border border-master/20 bg-master-light dark:border-master/30 dark:bg-master-light p-3">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-master-light dark:bg-master-light">
+              <User className="h-3.5 w-3.5 text-master dark:text-master-muted" />
+            </div>
+            <span className="text-xs font-semibold text-master dark:text-master-muted">Auto Model Images</span>
+          </div>
+          <p className="text-[10px] text-master-muted/80 dark:text-master-muted/80">
+            Each selected model&apos;s primary image will be used automatically.
+            The batch step will be converted to individual video generation per model.
+          </p>
+        </div>
+      ) : (
+      <>
       {/* Image Source Toggle (no Extract — moved to First Frame section) */}
       <div>
         <label className="mb-1.5 block text-xs font-medium text-[var(--text-muted)]">Model Images</label>
@@ -803,6 +820,8 @@ export default function BatchVideoGenConfig({
             </div>
           )}
         </div>
+      )}
+      </>
       )}
 
       {/* Prompt */}

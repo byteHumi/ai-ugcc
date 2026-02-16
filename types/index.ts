@@ -12,13 +12,31 @@ export type Job = {
   createdAt: string;
 };
 
+export type PostPlatform = {
+  platform: string;
+  accountId?: string | { _id: string };
+  status?: string;
+  platformPostId?: string;
+  platformPostUrl?: string;
+  publishedAt?: string;
+  errorMessage?: string;
+  errorCategory?: string;
+  errorSource?: string;
+};
+
 export type Post = {
   _id: string;
+  title?: string;
   content?: string;
+  status?: string;
+  derivedStatus?: 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed' | 'partial' | 'cancelled';
   scheduledFor?: string;
+  timezone?: string;
   createdAt?: string;
-  mediaItems?: { url?: string; thumbnailUrl?: string }[];
-  platforms?: { platform: string; status?: string; platformPostUrl?: string }[];
+  updatedAt?: string;
+  publishedAt?: string;
+  mediaItems?: { type?: string; url?: string; thumbnailUrl?: string }[];
+  platforms?: PostPlatform[];
 };
 
 export type Profile = {
@@ -44,6 +62,7 @@ export type Model = {
   description?: string;
   avatarUrl?: string;
   imageCount?: number;
+  linkedPlatforms?: string[];
   createdAt?: string;
 };
 
@@ -93,6 +112,8 @@ export type VideoGenConfig = {
   firstFrameEnabled?: boolean;
   extractedFrameUrl?: string;      // GCS URL of the picked extracted frame
   firstFrameResolution?: '1K' | '2K' | '4K';
+  // Master mode: per-model first frame selections (modelId → selected first frame GCS URL)
+  masterFirstFrames?: Record<string, string>;
 };
 
 export type TextOverlayConfig = {
@@ -189,6 +210,9 @@ export type TemplateJob = {
   signedUrl?: string;
   stepResults?: StepResult[];
   pipelineBatchId?: string;
+  modelId?: string;
+  postStatus?: 'pending' | 'posted' | 'rejected' | null;
+  regeneratedFrom?: string | null;
   error?: string;
   createdAt: string;
   completedAt?: string;
@@ -202,6 +226,8 @@ export type PipelineBatch = {
   completedJobs: number;
   failedJobs: number;
   pipeline: MiniAppStep[];
+  isMaster?: boolean;
+  masterConfig?: MasterConfig;
   createdAt: string;
   completedAt?: string;
 };
@@ -225,6 +251,29 @@ export type GeneratedImage = {
   sceneImageUrl?: string;
   promptVariant?: string;
   createdAt: string;
+};
+
+export type ModelAccountMapping = {
+  id: string;
+  modelId: string;
+  lateAccountId: string;
+  platform: string;
+  createdAt: string;
+};
+
+export type MasterConfigModel = {
+  modelId: string;
+  modelName: string;
+  primaryImageUrl: string;
+  accountIds: string[];
+};
+
+export type MasterConfig = {
+  caption: string;
+  scheduledFor?: string;
+  timezone?: string;
+  publishMode: 'now' | 'schedule' | 'queue' | 'draft';
+  models: MasterConfigModel[];
 };
 
 export type TemplatePreset = {

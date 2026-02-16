@@ -102,5 +102,8 @@ export function usePipelineBatches() {
     scheduleNext();
   }, [loadBatches, scheduleNext]);
 
-  return { batches, loading, refresh, refreshing };
+  const masterBatches = batches.filter(b => b.isMaster);
+  const regularBatches = batches.filter(b => !b.isMaster);
+
+  return { batches, masterBatches, regularBatches, loading, refresh, refreshing };
 }

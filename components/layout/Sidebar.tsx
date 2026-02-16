@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Sparkles, UserCircle, Package, FileText, Link2, ListVideo, LayoutTemplate, ClipboardList, ImageIcon } from 'lucide-react';
+import { Sparkles, UserCircle, Package, FileText, Link2, ListVideo, LayoutTemplate, ClipboardList, ImageIcon, Crown, LogOut } from 'lucide-react';
+import { useSession, signOut } from 'next-auth/react';
 import {
   Sidebar,
   SidebarContent,
@@ -20,9 +21,9 @@ import {
 import ThemeToggle from '@/components/ui/ThemeToggle';
 
 const createItems = [
- 
   { href: '/templates', label: 'Pipelines', icon: LayoutTemplate },
-   { href: '/generate', label: 'Generate', icon: Sparkles },
+  { href: '/master-pipeline', label: 'Master Pipeline', icon: Crown },
+  { href: '/generate', label: 'Generate', icon: Sparkles },
 ];
 
 const contentItems = [
@@ -40,6 +41,7 @@ const settingsItems = [
 
 export default function AppSidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
 
   const renderGroup = (items: typeof createItems) =>
     items.map((item) => {
@@ -108,8 +110,34 @@ export default function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      {/* Footer — theme toggle + collapse trigger */}
+      {/* Footer — user info, theme toggle, collapse trigger */}
       <SidebarFooter className="border-t border-[var(--sidebar-border)] p-3">
+        {session?.user && (
+          <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center mb-2">
+            {session.user.image ? (
+              <img
+                src={session.user.image}
+                alt=""
+                className="h-7 w-7 shrink-0 rounded-full"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-[10px] font-bold text-white">
+                {session.user.email?.[0]?.toUpperCase()}
+              </div>
+            )}
+            <span className="truncate text-xs text-[var(--text-secondary)] group-data-[collapsible=icon]:hidden">
+              {session.user.email}
+            </span>
+            <button
+              onClick={() => signOut({ callbackUrl: '/login' })}
+              title="Sign out"
+              className="ml-auto shrink-0 rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] group-data-[collapsible=icon]:hidden"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         <div className="flex items-center justify-between group-data-[collapsible=icon]:justify-center">
           <ThemeToggle />
           <SidebarTrigger className="group-data-[collapsible=icon]:hidden" />

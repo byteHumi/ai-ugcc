@@ -1,20 +1,19 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Send, Download, Loader2, AlertCircle, ChevronLeft, ChevronRight, Trash2, RotateCw, ExternalLink } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2, RotateCw, ExternalLink } from 'lucide-react';
 import { FaTiktok, FaInstagram, FaYoutube, FaXTwitter } from 'react-icons/fa6';
 import type { Post } from '@/types';
 import { useToast } from '@/hooks/useToast';
 import { getCreatedDateDisplay, getScheduledDateDisplay } from '@/lib/dateUtils';
+import { derivePostStatus, isActiveStatus } from '@/lib/postStatus';
 import Spinner from '@/components/ui/Spinner';
-import StatusBadge from '@/components/ui/StatusBadge';
 import Modal from '@/components/ui/Modal';
 
 const PER_PAGE = 16;
 
 function postStatus(post: Post) {
-  return post.platforms?.[0]?.status || (post as { status?: string }).status || 'draft';
+  return post.derivedStatus || derivePostStatus(post);
 }
 
 export default function PostList({
@@ -22,15 +21,12 @@ export default function PostList({
   isLoading,
   refresh,
   onCreatePost,
-  onVideoPreview,
 }: {
   posts: Post[];
   isLoading: boolean;
   refresh: () => Promise<void>;
   onCreatePost: () => void;
-  onVideoPreview: (video: { url: string; caption: string }) => void;
 }) {
-  const router = useRouter();
   const { showToast } = useToast();
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [page, setPage] = useState(1);
@@ -51,11 +47,15 @@ export default function PostList({
   // Dismiss the placeholder once a real active post appears in the list, or after timeout
   useEffect(() => {
     if (!publishingPost) return;
-    const hasNewActive = posts.some((p) => {
-      const s = p.platforms?.[0]?.status || '';
-      return s === 'publishing' || s === 'processing' || s === 'in_progress' || s === 'pending' || s === 'published';
+    const hasRecentPost = posts.some((post) => {
+      if (!post.createdAt) return false;
+      const createdAtMs = Date.parse(post.createdAt);
+      if (Number.isNaN(createdAtMs)) return false;
+      if (Date.now() - createdAtMs > 2 * 60 * 1000) return false;
+      const status = postStatus(post);
+      return isActiveStatus(status) || status === 'published' || status === 'scheduled' || status === 'partial' || status === 'failed';
     });
-    if (hasNewActive) {
+    if (hasRecentPost) {
       setPublishingPost(null);
       try { sessionStorage.removeItem('ai-ugc-new-post'); } catch {}
       return;
@@ -153,7 +153,7 @@ export default function PostList({
         {paginatedPosts.map((post) => {
           const status = postStatus(post);
           const thumbnail = post.mediaItems?.[0]?.url || post.mediaItems?.[0]?.thumbnailUrl;
-          const isActive = status === 'publishing' || status === 'processing' || status === 'in_progress' || status === 'pending';
+          const isActive = isActiveStatus(status);
           const isScheduled = status === 'scheduled';
 
           return (
@@ -204,9 +204,9 @@ export default function PostList({
                   {/* Platform chips */}
                   {post.platforms && post.platforms.length > 0 && (
                     <div className="flex gap-1">
-                      {post.platforms.map((p) => (
+                      {post.platforms.map((p, idx) => (
                           <span
-                            key={p.platform}
+                            key={`${p.platform}-${idx}-${typeof p.accountId === 'string' ? p.accountId : p.accountId?._id || 'unknown'}`}
                             className="flex h-7 w-7 items-center justify-center rounded-lg shadow-sm bg-black/50 backdrop-blur-sm"
                           >
                             {p.platform === 'tiktok' && <FaTiktok className="h-4 w-4" style={{ color: '#00f2ea' }} />}
@@ -334,14 +334,16 @@ export default function PostList({
                 {/* Platforms */}
                 {livePost.platforms && livePost.platforms.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
-                    {livePost.platforms.map((p) => {
+                    {livePost.platforms.map((p, idx) => {
                       const pStatus = p.status || 'pending';
+                      const platformLinkPending = pStatus === 'published' && !p.platformPostUrl;
                       return (
                         <span
-                          key={p.platform}
+                          key={`${p.platform}-${idx}-${typeof p.accountId === 'string' ? p.accountId : p.accountId?._id || 'unknown'}`}
                           className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
                             pStatus === 'published' ? 'bg-emerald-50 text-emerald-600' :
                             pStatus === 'failed' ? 'bg-red-50 text-red-600' :
+                            pStatus === 'partial' ? 'bg-orange-50 text-orange-600' :
                             pStatus === 'scheduled' ? 'bg-blue-50 text-blue-600' :
                             'bg-[var(--accent)] text-[var(--text-muted)]'
                           }`}
@@ -355,6 +357,12 @@ export default function PostList({
                             <a href={p.platformPostUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
                               <ExternalLink className="h-2.5 w-2.5" />
                             </a>
+                          )}
+                          {platformLinkPending && (
+                            <span className="inline-flex items-center gap-1 text-[9px] text-emerald-700">
+                              <Spinner className="h-2.5 w-2.5" />
+                              Syncing link
+                            </span>
                           )}
                         </span>
                       );

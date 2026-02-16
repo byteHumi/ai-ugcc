@@ -85,6 +85,30 @@ async function prepareVideoForFal(videoUrl: string, maxSeconds: number, jobId: s
 }
 
 /**
+ * Apply inline BG music to a video file (used when applyToSteps targets specific steps).
+ */
+async function applyInlineMusic(
+  videoPath: string,
+  music: { config: BgMusicConfig; trackPath: string },
+  stepIndex: number,
+): Promise<string> {
+  const tempDir = getTempDir();
+  const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-music-${Date.now()}.mp4`);
+
+  // Derive effective audio mode
+  let effectiveAudioMode: 'replace' | 'mix' = 'mix';
+  if (music.config.audioModePerStep) {
+    const vals = Object.values(music.config.audioModePerStep);
+    if (vals.some((m) => m === 'replace')) effectiveAudioMode = 'replace';
+  }
+  if (music.config.audioMode) effectiveAudioMode = music.config.audioMode;
+
+  const effectiveCfg = { ...music.config, audioMode: effectiveAudioMode };
+  mixAudio(videoPath, music.trackPath, outputPath, effectiveCfg);
+  return outputPath;
+}
+
+/**
  * Process a single pipeline step.
  * Takes the current video path and returns the new video path.
  */
@@ -93,7 +117,8 @@ export async function processStep(
   currentVideoPath: string,
   jobId: string,
   stepIndex: number,
-  stepOutputs: Map<string, string>
+  stepOutputs: Map<string, string>,
+  inlineMusic?: { config: BgMusicConfig; trackPath: string },
 ): Promise<string> {
   const tempDir = getTempDir();
 
@@ -296,6 +321,13 @@ export async function processStep(
         await downloadToLocal(clipUrl, attachPath);
       }
 
+      // If BG music targets this step, apply music to the clip before concat
+      let musicedClipPath: string | undefined;
+      if (inlineMusic) {
+        musicedClipPath = await applyInlineMusic(attachPath, inlineMusic, stepIndex);
+        attachPath = musicedClipPath;
+      }
+
       const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${Date.now()}.mp4`);
       const videoPaths = cfg.position === 'before'
         ? [attachPath, currentVideoPath]
@@ -306,6 +338,9 @@ export async function processStep(
       } finally {
         if (!clipIsLocal) {
           try { fs.unlinkSync(attachPath); } catch {}
+        }
+        if (musicedClipPath) {
+          try { fs.unlinkSync(musicedClipPath); } catch {}
         }
       }
       return outputPath;
@@ -325,6 +360,7 @@ export async function processTemplateJob(jobId: string): Promise<void> {
 
   const tempDir = getTempDir();
   const tempFiles: string[] = [];
+  const inlineMusicTrackPaths: string[] = []; // BG music tracks downloaded for inline application
 
   try {
     await updateTemplateJob(jobId, { status: 'processing', step: 'Starting pipeline...' });
@@ -367,6 +403,38 @@ export async function processTemplateJob(jobId: string): Promise<void> {
       throw new Error('No video source provided');
     }
 
+    // Pre-scan: find BG music steps with applyToSteps and build inline music map
+    // This allows music to be applied to specific step outputs (e.g., only the attached clip)
+    const inlineMusicMap = new Map<string, { config: BgMusicConfig; trackPath: string }>();
+    const inlineMusicSkipSet = new Set<string>(); // BG music step IDs to skip (already applied inline)
+
+    for (const s of enabledSteps) {
+      if (s.type === 'bg-music') {
+        const bgCfg = s.config as BgMusicConfig;
+        if (bgCfg.applyToSteps && bgCfg.applyToSteps.length > 0) {
+          const trackUrl = bgCfg.customTrackUrl || bgCfg.trackId;
+          if (trackUrl) {
+            const trackPath = path.join(tempDir, `tpl-inline-audio-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.mp3`);
+            try {
+              await downloadToLocal(trackUrl, trackPath);
+              inlineMusicTrackPaths.push(trackPath);
+              for (const targetId of bgCfg.applyToSteps) {
+                // Derive per-step audio mode
+                const stepAudioMode = bgCfg.audioModePerStep?.[targetId] ?? 'mix';
+                inlineMusicMap.set(targetId, {
+                  config: { ...bgCfg, audioMode: stepAudioMode },
+                  trackPath,
+                });
+              }
+              inlineMusicSkipSet.add(s.id);
+            } catch (e) {
+              console.error(`[Template] Failed to download inline music track:`, e);
+            }
+          }
+        }
+      }
+    }
+
     // Process each enabled step, tracking outputs by step ID
     const stepOutputs = new Map<string, string>();
     const stepResults: { stepId: string; type: string; label: string; outputUrl: string }[] = [];
@@ -375,12 +443,30 @@ export async function processTemplateJob(jobId: string): Promise<void> {
       const step = enabledSteps[i];
       const stepLabel = getStepLabel(step);
 
+      // Skip BG music steps that were applied inline to targeted steps
+      if (inlineMusicSkipSet.has(step.id)) {
+        continue;
+      }
+
       await updateTemplateJob(jobId, {
         currentStep: i,
         step: `Step ${i + 1}/${enabledSteps.length}: ${stepLabel}`,
       });
 
-      const newVideoPath = await processStep(step, currentVideoPath, jobId, i, stepOutputs);
+      // Pass inline music config if this step is targeted by a BG music step
+      const inlineMusic = inlineMusicMap.get(step.id);
+
+      let newVideoPath = await processStep(step, currentVideoPath, jobId, i, stepOutputs, inlineMusic);
+
+      // For non-attach-video steps (attach-video handles music internally on the clip),
+      // apply inline music to the step output if targeted
+      if (inlineMusic && step.type !== 'attach-video') {
+        const musicedPath = await applyInlineMusic(newVideoPath, inlineMusic, i);
+        try { fs.unlinkSync(newVideoPath); } catch {}
+        newVideoPath = musicedPath;
+        tempFiles.push(musicedPath);
+      }
+
       stepOutputs.set(step.id, newVideoPath);
 
       // Upload intermediate result to GCS
@@ -446,6 +532,10 @@ export async function processTemplateJob(jobId: string): Promise<void> {
   } finally {
     // Clean up all temp files
     for (const f of tempFiles) {
+      try { fs.unlinkSync(f); } catch {}
+    }
+    // Clean up inline music track files
+    for (const f of inlineMusicTrackPaths) {
       try { fs.unlinkSync(f); } catch {}
     }
   }

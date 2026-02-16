@@ -34,8 +34,10 @@ type SourceConfig = {
   onFileDrop?: (file: File) => void;
 };
 
+export type MasterModel = { modelId: string; modelName: string; primaryImageUrl: string; primaryGcsUrl: string };
+
 export default function NodeConfigPanel({
-  selectedId, steps, onUpdateStep, onRemoveStep, onClose, sourceConfig, videoUrl, sourceDuration, validationError, isLoadingVideo,
+  selectedId, steps, onUpdateStep, onRemoveStep, onClose, sourceConfig, videoUrl, sourceDuration, validationError, isLoadingVideo, masterMode, masterModels,
 }: {
   selectedId: string | null;
   steps: MiniAppStep[];
@@ -47,6 +49,8 @@ export default function NodeConfigPanel({
   sourceDuration?: number;
   validationError?: string;
   isLoadingVideo?: boolean;
+  masterMode?: boolean;
+  masterModels?: MasterModel[];
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -213,8 +217,8 @@ export default function NodeConfigPanel({
               isLoadingVideo={isLoadingVideo}
             />
           )}
-          {step.type === 'video-generation' && <VideoGenConfig config={step.config as VGC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} sourceDuration={sourceDuration} sourceVideoUrl={sourceConfig.previewUrl || sourceConfig.videoUrl} stepId={step.id} />}
-          {step.type === 'batch-video-generation' && <BatchVideoGenConfig config={step.config as BVGC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} sourceDuration={sourceDuration} sourceVideoUrl={sourceConfig.previewUrl || sourceConfig.videoUrl} stepId={step.id} />}
+          {step.type === 'video-generation' && <VideoGenConfig config={step.config as VGC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} sourceDuration={sourceDuration} sourceVideoUrl={sourceConfig.previewUrl || sourceConfig.videoUrl} stepId={step.id} masterMode={masterMode} masterModels={masterModels} />}
+          {step.type === 'batch-video-generation' && <BatchVideoGenConfig config={step.config as BVGC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} sourceDuration={sourceDuration} sourceVideoUrl={sourceConfig.previewUrl || sourceConfig.videoUrl} stepId={step.id} masterMode={masterMode} />}
           {step.type === 'text-overlay' && <TextOverlayConfig config={step.config as TOC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} />}
           {step.type === 'bg-music' && <BgMusicConfig config={step.config as BMC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} steps={steps} currentStepId={step.id} />}
           {step.type === 'attach-video' && <AttachVideoConfig config={step.config as AVC} onChange={(c) => onUpdateStep(step.id, { ...step, config: c })} steps={steps} currentStepId={step.id} />}

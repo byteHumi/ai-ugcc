@@ -3,7 +3,7 @@ import path from 'path';
 import { config } from '@/lib/config';
 import { lateApiRequest, LateApiError } from '@/lib/lateApi';
 import { downloadToBuffer } from '@/lib/storage';
-import { createPost, updatePost } from '@/lib/db';
+import { createPost, updatePost, findRecentDuplicatePost } from '@/lib/db';
 
 export const maxDuration = 180;
 export const dynamic = 'force-dynamic';
@@ -45,9 +45,24 @@ type PlatformTarget = {
   accountId: string;
 };
 
+const DEDUPE_WINDOW_MS = 30_000;
+const inFlightDedupeByKey = new Map<string, number>();
+const recentSuccessByKey = new Map<string, { timestamp: number; latePostId?: string; platforms?: LatePostPlatform[] }>();
+
+function pruneDedupeMaps(now = Date.now()) {
+  for (const [key, timestamp] of inFlightDedupeByKey) {
+    if (now - timestamp > DEDUPE_WINDOW_MS) inFlightDedupeByKey.delete(key);
+  }
+  for (const [key, data] of recentSuccessByKey) {
+    if (now - data.timestamp > DEDUPE_WINDOW_MS) recentSuccessByKey.delete(key);
+  }
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const requestId = `post-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let dedupeKeyValue: string | null = null;
+  let dedupeKeyLocked = false;
 
   const log = (stage: string, ...args: unknown[]) => {
     console.log(`[Post Upload][${requestId}][${stage}]`, ...args);
@@ -68,6 +83,7 @@ export async function POST(request: NextRequest) {
       scheduledFor,
       timezone,
       jobId,
+      dedupeKey,
     } = body as {
       videoUrl?: string;
       caption?: string;
@@ -76,6 +92,7 @@ export async function POST(request: NextRequest) {
       scheduledFor?: string;
       timezone?: string;
       jobId?: string;
+      dedupeKey?: string;
     };
 
     log('PARSE', 'Parsed request body', {
@@ -109,7 +126,70 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'scheduledFor is required for schedule mode' }, { status: 400 });
     }
 
+    dedupeKeyValue = typeof dedupeKey === 'string' && dedupeKey.trim() ? dedupeKey.trim() : null;
+    pruneDedupeMaps();
+    if (dedupeKeyValue) {
+      const recentSuccess = recentSuccessByKey.get(dedupeKeyValue);
+      if (recentSuccess && Date.now() - recentSuccess.timestamp <= DEDUPE_WINDOW_MS) {
+        log('DEDUPE', 'Suppressing duplicate request from recent success');
+        return NextResponse.json({
+          success: true,
+          deduped: true,
+          message: 'Duplicate request suppressed. Existing post is already being processed.',
+          post: {
+            latePostId: recentSuccess.latePostId,
+            platforms: recentSuccess.platforms || [],
+          },
+        });
+      }
+
+      const inFlightAt = inFlightDedupeByKey.get(dedupeKeyValue);
+      if (inFlightAt && Date.now() - inFlightAt <= DEDUPE_WINDOW_MS) {
+        log('DEDUPE', 'Suppressing duplicate request while first submission is in-flight');
+        return NextResponse.json({
+          success: true,
+          deduped: true,
+          message: 'Identical post request is already being processed.',
+        });
+      }
+
+      inFlightDedupeByKey.set(dedupeKeyValue, Date.now());
+      dedupeKeyLocked = true;
+    }
+
     log('MODE', `Publish mode: ${mode}`);
+
+    const lateAccountIds = [...new Set(platforms.map((platform) => platform.accountId).filter(Boolean))];
+    try {
+      const recentDuplicate = await findRecentDuplicatePost({
+        caption: caption || '',
+        videoUrl,
+        lateAccountIds,
+        mode,
+        scheduledFor: scheduledFor || null,
+        withinSeconds: Math.floor(DEDUPE_WINDOW_MS / 1000),
+      });
+      if (recentDuplicate?.latePostId) {
+        log('DEDUPE', `Suppressing duplicate using DB match: ${recentDuplicate.latePostId}`);
+        if (dedupeKeyValue) {
+          recentSuccessByKey.set(dedupeKeyValue, {
+            timestamp: Date.now(),
+            latePostId: recentDuplicate.latePostId,
+          });
+        }
+        return NextResponse.json({
+          success: true,
+          deduped: true,
+          message: 'Duplicate request suppressed. A matching post was already created.',
+          post: {
+            latePostId: recentDuplicate.latePostId,
+            platforms: [],
+          },
+        });
+      }
+    } catch (dedupeError) {
+      logError('DEDUPE', 'Recent duplicate DB check failed:', (dedupeError as Error).message);
+    }
 
     // --- Step 1: Get presigned upload URL from Late API ---
     log('PRESIGN', 'Requesting presigned URL from Late API...');
@@ -370,6 +450,15 @@ export async function POST(request: NextRequest) {
       message = `${successCount} succeeded, ${failedCount} failed`;
     }
 
+    if (dedupeKeyValue) {
+      recentSuccessByKey.set(dedupeKeyValue, {
+        timestamp: Date.now(),
+        latePostId,
+        platforms: latePost.platforms,
+      });
+      pruneDedupeMaps();
+    }
+
     return NextResponse.json({
       success: failedCount < dbResults.length,
       post: {
@@ -387,6 +476,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const totalMs = Date.now() - startTime;
     const isLateError = error instanceof LateApiError;
+    if (dedupeKeyValue) recentSuccessByKey.delete(dedupeKeyValue);
 
     logError('FAILED', `Failed after ${totalMs}ms:`, {
       message: (error as Error).message,
@@ -412,5 +502,10 @@ export async function POST(request: NextRequest) {
       },
       { status: status || 500 }
     );
+  } finally {
+    if (dedupeKeyLocked && dedupeKeyValue) {
+      inFlightDedupeByKey.delete(dedupeKeyValue);
+    }
+    pruneDedupeMaps();
   }
 }

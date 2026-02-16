@@ -56,7 +56,6 @@ function PostsPageContent() {
           setPreselectedVideoUrl(null);
           setCreatePostModal(true);
         }}
-        onVideoPreview={setVideoPreview}
       />
 
       <CreatePostModal

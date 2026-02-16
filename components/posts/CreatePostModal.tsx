@@ -1,10 +1,78 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Profile, Account } from '@/types';
 import { useToast } from '@/hooks/useToast';
 import { uploadVideoDirectToGcs } from '@/lib/gcsResumableUpload';
 import Spinner from '@/components/ui/Spinner';
+
+const SUBMIT_DEDUPE_STORAGE_KEY = 'ai-ugc-post-submit-dedupe-v1';
+const SUBMIT_DEDUPE_WINDOW_MS = 30_000;
+
+type SubmitDedupeStore = Record<string, number>;
+
+function readSubmitDedupeStore(): SubmitDedupeStore {
+  try {
+    const raw = sessionStorage.getItem(SUBMIT_DEDUPE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed as SubmitDedupeStore : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSubmitDedupeStore(store: SubmitDedupeStore) {
+  try {
+    sessionStorage.setItem(SUBMIT_DEDUPE_STORAGE_KEY, JSON.stringify(store));
+  } catch {}
+}
+
+function pruneSubmitDedupeStore(store: SubmitDedupeStore, nowMs: number) {
+  for (const key of Object.keys(store)) {
+    if (nowMs - store[key] > SUBMIT_DEDUPE_WINDOW_MS) delete store[key];
+  }
+}
+
+function createPostSubmitFingerprint(payload: {
+  videoUrl: string;
+  caption: string;
+  publishMode: 'now' | 'schedule' | 'queue' | 'draft';
+  selectedAccountIds: string[];
+  scheduledFor?: string;
+  timezone?: string;
+}) {
+  return JSON.stringify({
+    videoUrl: payload.videoUrl,
+    caption: payload.caption.trim(),
+    publishMode: payload.publishMode,
+    selectedAccountIds: [...payload.selectedAccountIds].sort(),
+    scheduledFor: payload.scheduledFor || null,
+    timezone: payload.timezone || null,
+  });
+}
+
+function markSubmitFingerprint(fingerprint: string, nowMs = Date.now()) {
+  const store = readSubmitDedupeStore();
+  pruneSubmitDedupeStore(store, nowMs);
+  store[fingerprint] = nowMs;
+  writeSubmitDedupeStore(store);
+}
+
+function hasRecentSubmitFingerprint(fingerprint: string, nowMs = Date.now()) {
+  const store = readSubmitDedupeStore();
+  pruneSubmitDedupeStore(store, nowMs);
+  writeSubmitDedupeStore(store);
+  const timestamp = store[fingerprint];
+  return typeof timestamp === 'number' && nowMs - timestamp <= SUBMIT_DEDUPE_WINDOW_MS;
+}
+
+function clearSubmitFingerprint(fingerprint: string) {
+  const store = readSubmitDedupeStore();
+  if (!(fingerprint in store)) return;
+  delete store[fingerprint];
+  writeSubmitDedupeStore(store);
+}
 
 export default function CreatePostModal({
   open,
@@ -36,6 +104,7 @@ export default function CreatePostModal({
   const [uploadedVideoPath, setUploadedVideoPath] = useState<string | null>(null);
   const [uploadedVideoPreviewUrl, setUploadedVideoPreviewUrl] = useState<string | null>(null);
   const [uploadedVideoName, setUploadedVideoName] = useState<string | null>(null);
+  const submitGuardRef = useRef(false);
 
   // Derived
   const selectedProfileAccounts = accounts.filter((a) => {
@@ -71,6 +140,7 @@ export default function CreatePostModal({
     setProfileMultiDropdownOpen(false);
     setPostTimezone('Asia/Kolkata');
     setIsPosting(false);
+    submitGuardRef.current = false;
   }, [open, preselectedVideoUrl]);
 
   const uploadPostVideoFile = async (file: File) => {
@@ -124,6 +194,27 @@ export default function CreatePostModal({
       return;
     }
 
+    if (submitGuardRef.current || isPosting) return;
+
+    const scheduledFor = publishMode === 'schedule'
+      ? `${postForm.date}T${postForm.time}:00`
+      : undefined;
+    const dedupeKey = createPostSubmitFingerprint({
+      videoUrl,
+      caption: postForm.caption,
+      publishMode,
+      selectedAccountIds,
+      scheduledFor,
+      timezone: publishMode === 'schedule' ? postTimezone : undefined,
+    });
+
+    if (hasRecentSubmitFingerprint(dedupeKey)) {
+      showToast('An identical post request was already submitted recently. Please wait a few seconds.', 'error');
+      return;
+    }
+
+    markSubmitFingerprint(dedupeKey);
+    submitGuardRef.current = true;
     setIsPosting(true);
     try {
       const platformTargets = selectedAccountIds.map((accId) => {
@@ -136,9 +227,10 @@ export default function CreatePostModal({
         caption: postForm.caption,
         platforms: platformTargets,
         publishMode,
+        dedupeKey,
       };
-      if (publishMode === 'schedule') {
-        body.scheduledFor = `${postForm.date}T${postForm.time}:00`;
+      if (scheduledFor) {
+        body.scheduledFor = scheduledFor;
         body.timezone = postTimezone;
       }
 
@@ -166,7 +258,7 @@ export default function CreatePostModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({} as Record<string, unknown>));
 
       if (res.ok && data.success) {
         showToast(data.message || 'Post submitted!', 'success');
@@ -180,12 +272,15 @@ export default function CreatePostModal({
         showToast(detailMsg || errorMsg, 'error');
         console.error('[Submit Post] Error:', JSON.stringify(data, null, 2));
         try { sessionStorage.removeItem('ai-ugc-new-post'); } catch {}
+        clearSubmitFingerprint(dedupeKey);
       }
     } catch (err) {
       showToast('Error: ' + (err as Error).message, 'error');
       console.error('[Submit Post] Exception:', err);
       try { sessionStorage.removeItem('ai-ugc-new-post'); } catch {}
+      clearSubmitFingerprint(dedupeKey);
     } finally {
+      submitGuardRef.current = false;
       setIsPosting(false);
     }
   };

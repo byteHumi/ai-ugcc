@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
+import AuthSessionProvider from "@/components/auth/SessionProvider";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -22,9 +23,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${dmSans.variable} antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
-        </ThemeProvider>
+        <AuthSessionProvider>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            {children}
+          </ThemeProvider>
+        </AuthSessionProvider>
       </body>
     </html>
   );

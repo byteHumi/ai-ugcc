@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { Plus, RefreshCw } from 'lucide-react';
 import type { Model } from '@/types';
 import { useModels } from '@/hooks/useModels';
-import RefreshButton from '@/components/ui/RefreshButton';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import ModelGrid from '@/components/models/ModelGrid';
 import NewModelModal from '@/components/models/NewModelModal';
 import ModelDetailModal from '@/components/models/ModelDetailModal';
@@ -15,19 +17,29 @@ export default function ModelsPage() {
   const [modelDetailModal, setModelDetailModal] = useState(false);
 
   return (
-    <div>
-      <div className="mb-6 flex items-start justify-between">
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--primary)]">Models</h1>
-          <p className="text-[var(--text-muted)]">Manage personas with multiple reference images</p>
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--primary)]">Models</h1>
+          <p className="text-xs text-[var(--text-muted)]">
+            {models.length} model{models.length !== 1 ? 's' : ''} &middot; Manage personas and link social accounts
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <RefreshButton onClick={refresh} />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={refresh}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh</TooltipContent>
+          </Tooltip>
           <button
             onClick={() => setNewModelModal(true)}
-            className="rounded-lg bg-[var(--primary)] px-4 py-2 font-medium text-white hover:bg-[var(--primary-hover)]"
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-xs font-medium text-white transition-colors hover:opacity-90"
           >
-            + New Model
+            <Plus className="h-3.5 w-3.5" />
+            New Model
           </button>
         </div>
       </div>

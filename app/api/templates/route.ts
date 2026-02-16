@@ -75,6 +75,8 @@ export async function POST(request: NextRequest) {
         name,
         pipeline,
         totalJobs: images.length,
+        isMaster: false,
+        masterConfig: null,
       });
 
       if (!batch) {
@@ -117,6 +119,7 @@ export async function POST(request: NextRequest) {
           tiktokUrl: tiktokUrl || null,
           videoUrl: videoUrl || null,
           pipelineBatchId: batch.id,
+          modelId: null,
         });
         childJobs.push(job);
       }
@@ -158,6 +161,7 @@ export async function POST(request: NextRequest) {
       tiktokUrl: tiktokUrl || null,
       videoUrl: videoUrl || null,
       pipelineBatchId: null,
+      modelId: null,
     });
 
     if (!job) {

@@ -7,6 +7,7 @@ import { useTemplates } from '@/hooks/useTemplates';
 import { usePipelineBatches } from '@/hooks/usePipelineBatches';
 import TemplateJobList from '@/components/templates/TemplateJobList';
 import PipelineBatchList from '@/components/templates/PipelineBatchList';
+import MasterBatchList from '@/components/templates/MasterBatchList';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
@@ -15,9 +16,15 @@ function JobsPageInner() {
   const { jobs, loading: jobsLoading, refresh: refreshJobs, refreshing: refreshingJobs } = useTemplates();
   const { batches, loading: batchesLoading, refresh: refreshBatches, refreshing: refreshingBatches } = usePipelineBatches();
 
-  const [tab, setTab] = useState<'single' | 'batch'>(() => {
+  // Derive master vs regular batches
+  const masterBatches = useMemo(() => batches.filter(b => b.isMaster), [batches]);
+  const regularBatches = useMemo(() => batches.filter(b => !b.isMaster), [batches]);
+
+  const [tab, setTab] = useState<'single' | 'batch' | 'master'>(() => {
     const param = searchParams.get('tab');
-    return param === 'batch' ? 'batch' : 'single';
+    if (param === 'batch') return 'batch';
+    if (param === 'master') return 'master';
+    return 'single';
   });
 
   const [newJobName, setNewJobName] = useState<string | null>(null);
@@ -52,7 +59,8 @@ function JobsPageInner() {
 
   const refreshing = tab === 'single' ? refreshingJobs : refreshingBatches;
   const handleRefresh = tab === 'single' ? refreshJobs : refreshBatches;
-  const itemCount = tab === 'single' ? singleJobs.length : batches.length;
+  const itemCount = tab === 'single' ? singleJobs.length : tab === 'batch' ? regularBatches.length : masterBatches.length;
+  const isTabLoading = (tab === 'single' && jobsLoading) || ((tab === 'batch' || tab === 'master') && batchesLoading);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -60,9 +68,9 @@ function JobsPageInner() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--primary)]">Jobs</h1>
           <p className="text-xs text-[var(--text-muted)]">
-            {(tab === 'single' && jobsLoading) || (tab === 'batch' && batchesLoading)
+            {isTabLoading
               ? 'Loading...'
-              : `${itemCount} ${tab === 'single' ? 'job' : 'batch'}${itemCount !== 1 ? (tab === 'single' ? 's' : 'es') : ''}`
+              : `${itemCount} ${tab === 'single' ? 'job' : tab === 'batch' ? 'batch' : 'master batch'}${itemCount !== 1 ? (tab === 'single' ? 's' : 'es') : ''}`
             }
           </p>
         </div>
@@ -81,15 +89,28 @@ function JobsPageInner() {
             </button>
             <button
               onClick={() => setTab('batch')}
-              className={`px-3 py-1.5 text-xs font-medium transition-all rounded-r-lg ${
+              className={`px-3 py-1.5 text-xs font-medium transition-all ${
                 tab === 'batch'
                   ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--accent)]'
               }`}
             >
               Batch
-              {batches.some(b => b.status === 'processing' || b.status === 'pending') && (
+              {regularBatches.some(b => b.status === 'processing' || b.status === 'pending') && (
                 <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+              )}
+            </button>
+            <button
+              onClick={() => setTab('master')}
+              className={`px-3 py-1.5 text-xs font-medium transition-all rounded-r-lg ${
+                tab === 'master'
+                  ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--accent)]'
+              }`}
+            >
+              Master
+              {masterBatches.some(b => b.status === 'processing' || b.status === 'pending') && (
+                <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-purple-500 animate-pulse" />
               )}
             </button>
           </div>
@@ -106,7 +127,7 @@ function JobsPageInner() {
       </div>
 
       {/* Full-page loader while fetching from DB */}
-      {((tab === 'single' && jobsLoading) || (tab === 'batch' && batchesLoading)) ? (
+      {isTabLoading ? (
         <div className="flex flex-col items-center justify-center py-24 gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-[var(--primary)]" />
           <p className="text-sm font-medium text-[var(--text-muted)]">Loading jobs...</p>
@@ -125,8 +146,10 @@ function JobsPageInner() {
 
           {tab === 'single' ? (
             <TemplateJobList jobs={singleJobs} />
+          ) : tab === 'batch' ? (
+            <PipelineBatchList batches={regularBatches} />
           ) : (
-            <PipelineBatchList batches={batches} />
+            <MasterBatchList batches={masterBatches} />
           )}
         </>
       )}
