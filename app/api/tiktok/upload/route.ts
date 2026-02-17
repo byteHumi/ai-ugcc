@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
+import { createHash } from 'crypto';
 import { config } from '@/lib/config';
 import { lateApiRequest, LateApiError } from '@/lib/lateApi';
 import { downloadToBuffer } from '@/lib/storage';
-import { createPost, updatePost } from '@/lib/db';
+import { createPost, updatePost, findRecentDuplicatePost, beginPostIdempotency, completePostIdempotency, clearPostIdempotency } from '@/lib/db';
 import { auth } from '@/lib/auth';
 
 // Allow longer timeout for video uploads (3 minutes)
@@ -46,6 +47,8 @@ type CreatePostResponse = {
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const requestId = `tiktok-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let idempotencyKey: string | null = null;
+  let idempotencyAcquired = false;
 
   const log = (stage: string, ...args: unknown[]) => {
     console.log(`[TikTok Upload][${requestId}][${stage}]`, ...args);
@@ -108,6 +111,89 @@ export async function POST(request: NextRequest) {
     const isImmediate = publishNow || !scheduledFor;
     const mode = isImmediate ? 'immediate' : 'scheduled';
     log('MODE', `Publish mode: ${mode}`);
+
+    const lockFingerprint = createHash('sha256')
+      .update(JSON.stringify({
+        videoUrl: finalVideoUrl,
+        caption: caption || '',
+        accountId,
+        mode: isImmediate ? 'now' : 'schedule',
+        scheduledFor: isImmediate ? null : (scheduledFor || null),
+        timezone: timezone || config.defaultTimezone,
+      }))
+      .digest('hex');
+    idempotencyKey = `tiktok-upload:${lockFingerprint}`;
+
+    const idemState = await beginPostIdempotency({
+      key: idempotencyKey,
+      requestHash: lockFingerprint,
+    });
+    if (idemState.state === 'processing') {
+      log('DEDUPE', 'Suppressing duplicate request due to persistent idempotency lock');
+      return NextResponse.json({
+        success: true,
+        deduped: true,
+        message: 'Identical post request is already being processed.',
+      });
+    }
+    if (idemState.state === 'completed') {
+      log('DEDUPE', `Suppressing duplicate request from persistent idempotency record: ${idempotencyKey}`);
+      const savedResponse = idemState.response && typeof idemState.response === 'object'
+        ? idemState.response as Record<string, unknown>
+        : null;
+      const latePostId = idemState.latePostId || (savedResponse?.post as { latePostId?: string } | undefined)?.latePostId;
+      return NextResponse.json({
+        success: true,
+        ...(savedResponse || {}),
+        deduped: true,
+        message: 'Duplicate request suppressed. This post was already created.',
+        post: (savedResponse?.post as Record<string, unknown> | undefined) || {
+          latePostId: latePostId || null,
+          platforms: [],
+        },
+      });
+    }
+    if (idemState.state === 'mismatch') {
+      logError('DEDUPE', `Idempotency key collision with mismatched payload: ${idempotencyKey}`);
+      return NextResponse.json(
+        { error: 'Idempotency key already used with different request payload' },
+        { status: 409 },
+      );
+    }
+    idempotencyAcquired = true;
+
+    try {
+      const recentDuplicate = await findRecentDuplicatePost({
+        caption: caption || '',
+        videoUrl: finalVideoUrl,
+        lateAccountIds: [accountId],
+        mode: isImmediate ? 'now' : 'schedule',
+        scheduledFor: isImmediate ? null : (scheduledFor || null),
+        withinSeconds: 30,
+      });
+      if (recentDuplicate?.latePostId) {
+        log('DEDUPE', `Suppressing duplicate using DB match: ${recentDuplicate.latePostId}`);
+        const duplicatePayload = {
+          success: true,
+          deduped: true,
+          message: 'Duplicate request suppressed. A matching post was already created.',
+          post: {
+            latePostId: recentDuplicate.latePostId,
+            platforms: [],
+          },
+        };
+        if (idempotencyAcquired && idempotencyKey) {
+          await completePostIdempotency({
+            key: idempotencyKey,
+            latePostId: recentDuplicate.latePostId,
+            response: duplicatePayload,
+          });
+        }
+        return NextResponse.json(duplicatePayload);
+      }
+    } catch (dedupeError) {
+      logError('DEDUPE', 'Recent duplicate DB check failed:', (dedupeError as Error).message);
+    }
 
     // --- Step 1: Get presigned upload URL from Late API ---
     log('PRESIGN', 'Requesting presigned URL from Late API...');
@@ -324,7 +410,7 @@ export async function POST(request: NextRequest) {
           ? 'Video failed to publish. Check logs for details.'
           : 'Video is being published to TikTok...';
 
-    return NextResponse.json({
+    const successPayload = {
       success: dbStatus !== 'failed',
       post: {
         id: dbPost?.id,
@@ -342,10 +428,21 @@ export async function POST(request: NextRequest) {
         uploadMs: Date.now() - uploadStart,
         totalMs,
       },
-    });
+    };
+    if (idempotencyAcquired && idempotencyKey) {
+      await completePostIdempotency({
+        key: idempotencyKey,
+        latePostId,
+        response: successPayload,
+      });
+    }
+    return NextResponse.json(successPayload);
   } catch (error) {
     const totalMs = Date.now() - startTime;
     const isLateError = error instanceof LateApiError;
+    if (idempotencyAcquired && idempotencyKey) {
+      await clearPostIdempotency(idempotencyKey);
+    }
 
     logError('FAILED', `Failed after ${totalMs}ms:`, {
       message: (error as Error).message,
@@ -363,5 +460,7 @@ export async function POST(request: NextRequest) {
       },
       { status: status || 500 }
     );
+  } finally {
+    // No-op
   }
 }

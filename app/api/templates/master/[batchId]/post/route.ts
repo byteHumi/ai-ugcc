@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initDatabase, getPipelineBatch, getTemplateJob, getTemplateJobsByBatchId, updateTemplateJobPostStatus, getModelAccountMappings, createPost, getPostsByJobIds } from '@/lib/db';
+import { initDatabase, getPipelineBatch, getTemplateJob, getTemplateJobsByBatchId, updateTemplateJobPostStatus, getModelAccountMappings, createPost, getPostsByJobIds, acquireTemplateJobPostLock, releaseTemplateJobPostLock } from '@/lib/db';
 import { lateApiRequest, LateApiError } from '@/lib/lateApi';
 import { downloadToBuffer } from '@/lib/storage';
 import { config } from '@/lib/config';
@@ -9,6 +9,9 @@ import { auth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
+
+// In-flight lock: prevents concurrent posting of the same batch
+const inflightBatches = new Map<string, Set<string>>();
 
 type PresignResponse = {
   uploadUrl: string;
@@ -106,8 +109,31 @@ export async function POST(
 
     const results: PostResult[] = [];
 
+    // Get or create in-flight set for this batch
+    if (!inflightBatches.has(batchId)) {
+      inflightBatches.set(batchId, new Set());
+    }
+    const inflightJobs = inflightBatches.get(batchId)!;
+
     for (const jobId of jobIds) {
+      let hasDbLock = false;
       try {
+        // Skip if another request is already posting this job
+        if (inflightJobs.has(jobId)) {
+          log('JOB', `Job ${jobId}: already being posted by another request, skipping`);
+          results.push({ jobId, status: 'skipped', error: 'Already being posted' });
+          continue;
+        }
+        inflightJobs.add(jobId);
+
+        // Cross-instance lock: prevents duplicate posting when requests hit different servers.
+        hasDbLock = await acquireTemplateJobPostLock(jobId);
+        if (!hasDbLock) {
+          log('JOB', `Job ${jobId}: DB lock already held, skipping duplicate request`);
+          results.push({ jobId, status: 'skipped', error: 'Already being posted' });
+          continue;
+        }
+
         log('JOB', `Processing job ${jobId}`);
 
         const job = await getTemplateJob(jobId);
@@ -180,6 +206,8 @@ export async function POST(
         }
 
         if (platformTargets.length === 0) {
+          // Still mark as posted so user's approval is recorded even without social accounts
+          await updateTemplateJobPostStatus(jobId, 'posted');
           results.push({ jobId, modelId: job.modelId, status: 'skipped', error: 'No social accounts linked to this model. Go to /models to link accounts.' });
           continue;
         }
@@ -410,7 +438,21 @@ export async function POST(
           status: 'failed',
           error: errorMessage,
         });
+      } finally {
+        if (hasDbLock) {
+          try {
+            await releaseTemplateJobPostLock(jobId);
+          } catch (lockError) {
+            logError('LOCK', `Failed to release DB lock for ${jobId}:`, (lockError as Error).message);
+          }
+        }
+        inflightJobs.delete(jobId);
       }
+    }
+
+    // Cleanup batch from in-flight map if no more jobs
+    if (inflightJobs.size === 0) {
+      inflightBatches.delete(batchId);
     }
 
     const posted = results.filter((r) => r.status === 'posted').length;

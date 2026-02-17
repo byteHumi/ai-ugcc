@@ -168,38 +168,35 @@ export default function MasterBatchDetailPage() {
   };
 
   const handlePostSelected = async () => {
-    if (selectedJobIds.size === 0) return;
+    if (selectedJobIds.size === 0 || posting) return;
     setPosting(true);
     try {
       const ids = Array.from(selectedJobIds);
 
-      // 1. Try to post via Late API first
-      try {
-        const res = await fetch(`/api/templates/master/${id}/post`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jobIds: ids }),
-        });
-        const data = await res.json();
-        if (res.ok && data.summary?.posted > 0) {
-          showToast(`Approved & posted ${data.summary.posted} video${data.summary.posted > 1 ? 's' : ''}!`, 'success');
+      const res = await fetch(`/api/templates/master/${id}/post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobIds: ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to approve videos', 'error');
+      } else {
+        const posted = Number(data.summary?.posted || 0);
+        const skipped = Number(data.summary?.skipped || 0);
+        const failed = Number(data.summary?.failed || 0);
+
+        if (failed > 0) {
+          showToast(`Approve finished: ${posted} posted, ${skipped} skipped, ${failed} failed.`, 'error');
+        } else if (posted > 0) {
+          const skippedText = skipped > 0 ? `, ${skipped} skipped` : '';
+          showToast(`Approved & posted ${posted} video${posted > 1 ? 's' : ''}${skippedText}.`, 'success');
+        } else if (skipped > 0) {
+          showToast(`No new posts created (${skipped} skipped).`, 'success');
         } else {
           showToast(`Approved ${ids.length} video${ids.length > 1 ? 's' : ''}!`, 'success');
         }
-      } catch {
-        showToast(`Approved ${ids.length} video${ids.length > 1 ? 's' : ''}!`, 'success');
       }
-
-      // 2. Tag any remaining jobs as approved (post API already tags posted ones)
-      await Promise.all(
-        ids.map((jobId) =>
-          fetch(`/api/templates/${jobId}/post-status`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ postStatus: 'posted' }),
-          })
-        )
-      );
 
       setSelectedJobIds(new Set());
       await loadBatch();
@@ -226,41 +223,46 @@ export default function MasterBatchDetailPage() {
 
   const handleSinglePost = async (jobId: string) => {
     const job = jobs.find(j => j.id === jobId);
-    if (job?.postStatus === 'posted' || inflightRef.current.has(jobId)) return;
+    if (posting || job?.postStatus === 'posted' || inflightRef.current.has(jobId)) return;
 
     addBusy(jobId);
     try {
-      try {
-        const res = await fetch(`/api/templates/master/${id}/post`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jobIds: [jobId] }),
-        });
-        const data = await res.json();
-        if (res.ok && data.summary?.posted > 0) {
-          showToast('Approved & posted!', 'success');
-        } else if (res.ok && data.summary?.skipped > 0) {
-          await fetch(`/api/templates/${jobId}/post-status`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ postStatus: 'posted' }),
-          });
+      const res = await fetch(`/api/templates/master/${id}/post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobIds: [jobId] }),
+      });
+      const data = await res.json();
+      if (res.ok && data.summary?.posted > 0) {
+        showToast('Approved & posted!', 'success');
+      } else if (res.ok && data.summary?.skipped > 0) {
+        const result = Array.isArray(data.results)
+          ? data.results.find((r: { jobId?: string }) => r?.jobId === jobId)
+          : null;
+        const reason = typeof result?.error === 'string' ? result.error : '';
+        const normalizedReason = reason.toLowerCase();
+        if (normalizedReason.includes('no social accounts linked')) {
           showToast('Approved! No social accounts linked — go to /models to link accounts.', 'success');
+        } else if (
+          normalizedReason.includes('already posted') ||
+          normalizedReason.includes('already being posted') ||
+          normalizedReason.includes('model already posted')
+        ) {
+          showToast('Already approved.', 'success');
+        } else if (reason) {
+          showToast(`Skipped: ${reason}`, 'success');
         } else {
-          await fetch(`/api/templates/${jobId}/post-status`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ postStatus: 'posted' }),
-          });
-          showToast('Approved!', 'success');
+          showToast('No new post created for this video.', 'success');
         }
-      } catch {
-        await fetch(`/api/templates/${jobId}/post-status`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ postStatus: 'posted' }),
-        });
+      } else if (res.ok && data.summary?.failed > 0) {
+        const result = Array.isArray(data.results)
+          ? data.results.find((r: { jobId?: string }) => r?.jobId === jobId)
+          : null;
+        showToast((typeof result?.error === 'string' && result.error) || 'Failed to approve', 'error');
+      } else if (res.ok) {
         showToast('Approved!', 'success');
+      } else {
+        showToast(data.error || 'Failed to approve', 'error');
       }
 
       setModalJob(null);
@@ -273,7 +275,7 @@ export default function MasterBatchDetailPage() {
   };
 
   const handleRepost = async (jobId: string) => {
-    if (inflightRef.current.has(jobId)) return;
+    if (posting || inflightRef.current.has(jobId)) return;
     addBusy(jobId);
     try {
       const res = await fetch(`/api/templates/master/${id}/post`, {
@@ -429,35 +431,35 @@ export default function MasterBatchDetailPage() {
   };
 
   const handleApproveAll = async () => {
-    if (selectableJobs.length === 0) return;
+    if (selectableJobs.length === 0 || posting) return;
     if (!confirm(`Approve all ${selectableJobs.length} videos?`)) return;
     setPosting(true);
     try {
       const ids = selectableJobs.map((job) => job.id);
-      try {
-        const res = await fetch(`/api/templates/master/${id}/post`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jobIds: ids }),
-        });
-        const data = await res.json();
-        if (res.ok && data.summary?.posted > 0) {
-          showToast(`Approved & posted all ${data.summary.posted} videos!`, 'success');
+      const res = await fetch(`/api/templates/master/${id}/post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobIds: ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to approve all', 'error');
+      } else {
+        const posted = Number(data.summary?.posted || 0);
+        const skipped = Number(data.summary?.skipped || 0);
+        const failed = Number(data.summary?.failed || 0);
+
+        if (failed > 0) {
+          showToast(`Approve-all finished: ${posted} posted, ${skipped} skipped, ${failed} failed.`, 'error');
+        } else if (posted > 0) {
+          const skippedText = skipped > 0 ? `, ${skipped} skipped` : '';
+          showToast(`Approved & posted ${posted} video${posted > 1 ? 's' : ''}${skippedText}.`, 'success');
+        } else if (skipped > 0) {
+          showToast(`No new posts created (${skipped} skipped).`, 'success');
         } else {
           showToast(`Approved all ${ids.length} videos!`, 'success');
         }
-      } catch {
-        showToast(`Approved all ${ids.length} videos!`, 'success');
       }
-      await Promise.all(
-        ids.map((jobId) =>
-          fetch(`/api/templates/${jobId}/post-status`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ postStatus: 'posted' }),
-          }),
-        ),
-      );
       await loadBatch();
     } catch {
       showToast('Failed to approve all', 'error');

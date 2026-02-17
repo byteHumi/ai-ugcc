@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
+import { createHash } from 'crypto';
 import { config } from '@/lib/config';
 import { lateApiRequest, LateApiError } from '@/lib/lateApi';
 import { downloadToBuffer } from '@/lib/storage';
-import { createPost, updatePost, findRecentDuplicatePost } from '@/lib/db';
+import { createPost, updatePost, findRecentDuplicatePost, beginPostIdempotency, completePostIdempotency, clearPostIdempotency } from '@/lib/db';
 import { auth } from '@/lib/auth';
 export const maxDuration = 180;
 export const dynamic = 'force-dynamic';
@@ -55,6 +56,8 @@ export async function POST(request: NextRequest) {
   const requestId = `post-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   let dedupeKeyValue: string | null = null;
   let dedupeKeyLocked = false;
+  let idempotencyKey: string | null = null;
+  let idempotencyAcquired = false;
   const log = (stage: string, ...args: unknown[]) => {
     console.log(`[Post Upload][${requestId}][${stage}]`, ...args);
   };
@@ -109,6 +112,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'scheduledFor is required for schedule mode' }, { status: 400 });
     }
     dedupeKeyValue = typeof dedupeKey === 'string' && dedupeKey.trim() ? dedupeKey.trim() : null;
+    const platformFingerprint = [...new Set((platforms || [])
+      .map((platform) => `${platform.platform}:${platform.accountId}`)
+      .filter(Boolean))]
+      .sort();
+    const computedFingerprint = createHash('sha256')
+      .update(JSON.stringify({
+        videoUrl,
+        caption: caption || '',
+        mode,
+        scheduledFor: scheduledFor || null,
+        timezone: timezone || config.defaultTimezone,
+        platforms: platformFingerprint,
+      }))
+      .digest('hex');
+    idempotencyKey = dedupeKeyValue
+      ? `post-upload:${dedupeKeyValue}`
+      : `post-upload:fingerprint:${computedFingerprint}`;
+
     pruneDedupeMaps();
     if (dedupeKeyValue) {
       const recentSuccess = recentSuccessByKey.get(dedupeKeyValue);
@@ -136,6 +157,46 @@ export async function POST(request: NextRequest) {
       inFlightDedupeByKey.set(dedupeKeyValue, Date.now());
       dedupeKeyLocked = true;
     }
+
+    const idemState = await beginPostIdempotency({
+      key: idempotencyKey,
+      requestHash: computedFingerprint,
+    });
+
+    if (idemState.state === 'processing') {
+      log('DEDUPE', 'Suppressing duplicate request due to persistent idempotency lock');
+      return NextResponse.json({
+        success: true,
+        deduped: true,
+        message: 'Identical post request is already being processed.',
+      });
+    }
+    if (idemState.state === 'completed') {
+      log('DEDUPE', `Suppressing duplicate request from persistent idempotency record: ${idempotencyKey}`);
+      const savedResponse = idemState.response && typeof idemState.response === 'object'
+        ? idemState.response as Record<string, unknown>
+        : null;
+      const latePostId = idemState.latePostId || (savedResponse?.post as { latePostId?: string } | undefined)?.latePostId;
+      return NextResponse.json({
+        success: true,
+        ...(savedResponse || {}),
+        deduped: true,
+        message: 'Duplicate request suppressed. This post was already created.',
+        post: (savedResponse?.post as Record<string, unknown> | undefined) || {
+          latePostId: latePostId || null,
+          platforms: [],
+        },
+      });
+    }
+    if (idemState.state === 'mismatch') {
+      logError('DEDUPE', `Idempotency key collision with mismatched payload: ${idempotencyKey}`);
+      return NextResponse.json(
+        { error: 'Idempotency key already used with different request payload' },
+        { status: 409 },
+      );
+    }
+    idempotencyAcquired = true;
+
     log('MODE', `Publish mode: ${mode}`);
     const lateAccountIds = [...new Set(platforms.map((platform) => platform.accountId).filter(Boolean))];
     try {
@@ -155,7 +216,7 @@ export async function POST(request: NextRequest) {
             latePostId: recentDuplicate.latePostId,
           });
         }
-        return NextResponse.json({
+        const duplicatePayload = {
           success: true,
           deduped: true,
           message: 'Duplicate request suppressed. A matching post was already created.',
@@ -163,7 +224,15 @@ export async function POST(request: NextRequest) {
             latePostId: recentDuplicate.latePostId,
             platforms: [],
           },
-        });
+        };
+        if (idempotencyAcquired && idempotencyKey) {
+          await completePostIdempotency({
+            key: idempotencyKey,
+            latePostId: recentDuplicate.latePostId,
+            response: duplicatePayload,
+          });
+        }
+        return NextResponse.json(duplicatePayload);
       }
     } catch (dedupeError) {
       logError('DEDUPE', 'Recent duplicate DB check failed:', (dedupeError as Error).message);
@@ -400,7 +469,7 @@ export async function POST(request: NextRequest) {
       });
       pruneDedupeMaps();
     }
-    return NextResponse.json({
+    const successPayload = {
       success: failedCount < dbResults.length,
       post: {
         latePostId,
@@ -413,11 +482,22 @@ export async function POST(request: NextRequest) {
         uploadMs: Date.now() - uploadStart,
         totalMs,
       },
-    });
+    };
+    if (idempotencyAcquired && idempotencyKey) {
+      await completePostIdempotency({
+        key: idempotencyKey,
+        latePostId,
+        response: successPayload,
+      });
+    }
+    return NextResponse.json(successPayload);
   } catch (error) {
     const totalMs = Date.now() - startTime;
     const isLateError = error instanceof LateApiError;
     if (dedupeKeyValue) recentSuccessByKey.delete(dedupeKeyValue);
+    if (idempotencyAcquired && idempotencyKey) {
+      await clearPostIdempotency(idempotencyKey);
+    }
     logError('FAILED', `Failed after ${totalMs}ms:`, {
       message: (error as Error).message,
       status: isLateError ? (error as LateApiError).status : undefined,

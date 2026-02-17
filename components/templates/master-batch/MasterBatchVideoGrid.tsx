@@ -91,7 +91,7 @@ export default function MasterBatchVideoGrid({
             onEditRegenerate={() => onEditRegenerateJob(job)}
             onEditOverrides={onEditJobOverrides ? () => onEditJobOverrides(job) : undefined}
             hasOverrides={jobsWithOverrides?.has(job.id)}
-            isApproving={busyJobIds.has(job.id)}
+            isApproving={posting || busyJobIds.has(job.id)}
             isRejecting={false}
             isRegenerating={false}
           />
