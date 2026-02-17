@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Sparkles, UserCircle, Package, FileText, Link2, ListVideo, LayoutTemplate, ClipboardList, ImageIcon, Crown, LogOut, Video, LayoutGrid } from 'lucide-react';
+import { Sparkles, UserCircle, Package, FileText, Link2, ListVideo, LayoutTemplate, ClipboardList, ImageIcon, Crown, LogOut, Video, LayoutGrid, BarChart3 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import {
   Sidebar,
@@ -34,6 +34,7 @@ const contentItems = [
   { href: '/posts', label: 'Posts', icon: FileText },
   { href: '/images', label: 'Images', icon: ImageIcon },
   { href: '/videos', label: 'Videos', icon: Video },
+  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
 const settingsItems = [

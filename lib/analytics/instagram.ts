@@ -1,0 +1,97 @@
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY!;
+const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST_INSTAGRAM || 'instagram-looter2.p.rapidapi.com';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function rapidApiGet(path: string, retries = 2): Promise<any> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(`https://${RAPIDAPI_HOST}${path}`, {
+        headers: {
+          'x-rapidapi-key': RAPIDAPI_KEY,
+          'x-rapidapi-host': RAPIDAPI_HOST,
+        },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Instagram API error ${res.status}: ${text}`);
+      }
+      return await res.json() as Record<string, unknown>;
+    } catch (err) {
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('Unreachable');
+}
+
+export async function resolveInstagramUser(username: string): Promise<string> {
+  const data = await rapidApiGet(`/id?username=${encodeURIComponent(username)}`);
+  const userId = data?.id || data?.user_id || data?.pk;
+  if (!userId) throw new Error(`Could not resolve Instagram user: ${username}`);
+  return String(userId);
+}
+
+export async function fetchInstagramProfile(userId: string) {
+  const data = await rapidApiGet(`/profile2?id=${userId}`);
+  const user = data?.data?.user || data?.user || data;
+  return {
+    username: user?.username || '',
+    displayName: user?.full_name || user?.username || '',
+    profileUrl: user?.profile_pic_url_hd || user?.profile_pic_url || '',
+    followers: Number(user?.edge_followed_by?.count ?? user?.follower_count ?? 0),
+    following: Number(user?.edge_follow?.count ?? user?.following_count ?? 0),
+    mediaCount: Number(user?.edge_owner_to_timeline_media?.count ?? user?.media_count ?? 0),
+  };
+}
+
+type InstagramReel = {
+  externalId: string;
+  caption: string;
+  url: string;
+  thumbnailUrl: string;
+  publishedAt: string;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+};
+
+export async function fetchInstagramReels(userId: string, maxPages = 10): Promise<InstagramReel[]> {
+  const reels: InstagramReel[] = [];
+  let nextMaxId: string | undefined;
+
+  for (let page = 0; page < maxPages; page++) {
+    const path = nextMaxId
+      ? `/reels?id=${userId}&count=12&max_id=${nextMaxId}`
+      : `/reels?id=${userId}&count=12`;
+
+    const data = await rapidApiGet(path);
+    const items = data?.items || data?.data?.items || [];
+    if (items.length === 0) break;
+
+    for (const item of items) {
+      const media = item?.media || item;
+      reels.push({
+        externalId: String(media?.pk || media?.id || media?.code || ''),
+        caption: media?.caption?.text || '',
+        url: media?.code ? `https://www.instagram.com/reel/${media.code}/` : '',
+        thumbnailUrl: media?.image_versions2?.candidates?.[0]?.url || media?.thumbnail_url || '',
+        publishedAt: media?.taken_at ? new Date(Number(media.taken_at) * 1000).toISOString() : '',
+        views: Number(media?.video_play_count ?? media?.play_count ?? 0),
+        likes: Number(media?.like_count ?? 0),
+        comments: Number(media?.comment_count ?? 0),
+        shares: Number(media?.share_count ?? media?.reshare_count ?? media?.send_count ?? media?.shares ?? 0),
+        saves: Number(media?.save_count ?? media?.saved_count ?? media?.saves ?? 0),
+      });
+    }
+
+    nextMaxId = data?.paging_info?.max_id || data?.next_max_id;
+    if (!nextMaxId) break;
+  }
+
+  return reels;
+}

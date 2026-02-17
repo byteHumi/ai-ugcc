@@ -353,3 +353,73 @@ export type TemplatePreset = {
   createdAt: string;
   updatedAt: string;
 };
+
+// ── Analytics types ──
+
+export type AnalyticsAccount = {
+  id: string;
+  platform: string;
+  username: string;
+  accountId: string;
+  displayName?: string;
+  profileUrl?: string;
+  lateAccountId?: string;
+  followers: number;
+  totalViews: number;
+  totalLikes: number;
+  totalComments: number;
+  totalShares: number;
+  engagementRate: number;
+  lastSyncedAt?: string;
+  mediaCount?: number;
+  createdAt: string;
+};
+
+export type AnalyticsSnapshot = {
+  date: string;
+  followers: number;
+  totalViews: number;
+  totalLikes: number;
+  totalComments: number;
+  totalShares: number;
+  engagementRate: number;
+};
+
+export type AnalyticsMediaItem = {
+  id: string;
+  accountId: string;
+  platform: string;
+  externalId: string;
+  title?: string;
+  caption?: string;
+  url?: string;
+  thumbnailUrl?: string;
+  publishedAt?: string;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  engagementRate: number;
+  accountUsername?: string;
+  accountDisplayName?: string;
+};
+
+export type AnalyticsOverview = {
+  totalFollowers: number;
+  totalViews: number;
+  totalInteractions: number;
+  avgEngagementRate: number;
+  accountCount: number;
+  platformBreakdown: {
+    platform: string;
+    followers: number;
+    views: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    engagementRate: number;
+    accountCount: number;
+  }[];
+  history: AnalyticsSnapshot[];
+};
