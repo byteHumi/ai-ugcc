@@ -59,9 +59,10 @@ async function applyInlineMusic(
   videoPath: string,
   music: { config: BgMusicConfig; trackPath: string },
   stepIndex: number,
+  jobId?: string,
 ): Promise<string> {
   const tempDir = getTempDir();
-  const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-music-${Date.now()}.mp4`);
+  const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-music-${jobId || 'x'}-${Date.now()}.mp4`);
   let effectiveAudioMode: 'replace' | 'mix' = 'mix';
   if (music.config.audioModePerStep) {
     const vals = Object.values(music.config.audioModePerStep);
@@ -127,10 +128,10 @@ export async function processStep(
         const result = await fal.queue.result(falEndpoint, { requestId: request_id });
         const videoData = (result.data as { video?: { url?: string } })?.video ?? (result as { video?: { url?: string } }).video;
         if (!videoData?.url) throw new Error('No video URL from Veo 3.1 image-to-video');
-        const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${Date.now()}.mp4`);
+        const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${jobId}-${Date.now()}.mp4`);
         await downloadFile(videoData.url, outputPath);
         if (cfg.generateAudio === false) {
-          const silentPath = path.join(tempDir, `tpl-step-${stepIndex}-silent-${Date.now()}.mp4`);
+          const silentPath = path.join(tempDir, `tpl-step-${stepIndex}-silent-${jobId}-${Date.now()}.mp4`);
           stripAudio(outputPath, silentPath);
           try { fs.unlinkSync(outputPath); } catch {}
           return silentPath;
@@ -142,7 +143,7 @@ export async function processStep(
         let videoToUpload = currentVideoPath;
         let trimmedPath: string | undefined;
         if (duration > maxSec) {
-          trimmedPath = path.join(tempDir, `tpl-mc-trimmed-${stepIndex}-${Date.now()}.mp4`);
+          trimmedPath = path.join(tempDir, `tpl-mc-trimmed-${stepIndex}-${jobId}-${Date.now()}.mp4`);
           trimVideo(currentVideoPath, trimmedPath, maxSec);
           videoToUpload = trimmedPath;
         }
@@ -177,10 +178,10 @@ export async function processStep(
         const result = await fal.queue.result(falEndpoint, { requestId: request_id });
         const videoData = (result.data as { video?: { url?: string } })?.video ?? (result as { video?: { url?: string } }).video;
         if (!videoData?.url) throw new Error('No video URL from motion-control');
-        const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${Date.now()}.mp4`);
+        const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${jobId}-${Date.now()}.mp4`);
         await downloadFile(videoData.url, outputPath);
         if (cfg.generateAudio === false) {
-          const silentPath = path.join(tempDir, `tpl-step-${stepIndex}-silent-${Date.now()}.mp4`);
+          const silentPath = path.join(tempDir, `tpl-step-${stepIndex}-silent-${jobId}-${Date.now()}.mp4`);
           stripAudio(outputPath, silentPath);
           try { fs.unlinkSync(outputPath); } catch {}
           return silentPath;
@@ -190,7 +191,7 @@ export async function processStep(
     }
     case 'text-overlay': {
       const cfg = step.config as TextOverlayConfig;
-      const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${Date.now()}.mp4`);
+      const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${jobId}-${Date.now()}.mp4`);
       await addTextOverlay(currentVideoPath, outputPath, cfg);
       return outputPath;
     }
@@ -208,7 +209,7 @@ export async function processStep(
       const effectiveCfg = { ...cfg, audioMode: effectiveAudioMode };
       const audioPath = path.join(tempDir, `tpl-audio-${stepIndex}-${Date.now()}.mp3`);
       await downloadToLocal(trackUrl, audioPath);
-      const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${Date.now()}.mp4`);
+      const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${jobId}-${Date.now()}.mp4`);
       try {
         mixAudio(currentVideoPath, audioPath, outputPath, effectiveCfg);
       } finally {
@@ -235,15 +236,15 @@ export async function processStep(
       if (clipIsLocal) {
         attachPath = clipUrl;
       } else {
-        attachPath = path.join(tempDir, `tpl-attach-${stepIndex}-${Date.now()}.mp4`);
+        attachPath = path.join(tempDir, `tpl-attach-${stepIndex}-${jobId}-${Date.now()}.mp4`);
         await downloadToLocal(clipUrl, attachPath);
       }
       let musicedClipPath: string | undefined;
       if (inlineMusic) {
-        musicedClipPath = await applyInlineMusic(attachPath, inlineMusic, stepIndex);
+        musicedClipPath = await applyInlineMusic(attachPath, inlineMusic, stepIndex, jobId);
         attachPath = musicedClipPath;
       }
-      const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${Date.now()}.mp4`);
+      const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${jobId}-${Date.now()}.mp4`);
       const videoPaths = cfg.position === 'before'
         ? [attachPath, currentVideoPath]
         : [currentVideoPath, attachPath];
@@ -380,7 +381,7 @@ export async function processTemplateJob(jobId: string): Promise<void> {
       const inlineMusic = inlineMusicMap.get(step.id);
       let newVideoPath = await processStep(step, currentVideoPath, jobId, i, stepOutputs, inlineMusic);
       if (inlineMusic && step.type !== 'attach-video') {
-        const musicedPath = await applyInlineMusic(newVideoPath, inlineMusic, i);
+        const musicedPath = await applyInlineMusic(newVideoPath, inlineMusic, i, jobId);
         try { fs.unlinkSync(newVideoPath); } catch {}
         newVideoPath = musicedPath;
         tempFiles.push(musicedPath);

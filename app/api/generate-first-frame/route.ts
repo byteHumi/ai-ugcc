@@ -18,14 +18,17 @@ const PROMPT_A =
   'Do NOT invent a new face. Do NOT blend or average the faces. The portrait face is the ONLY identity to use. ' +
   'Photorealistic output, consistent lighting, natural skin texture.';
 
-// Prompt B: Same intent, alternative wording for diversity.
+// Prompt B: Same face-swap intent but removes any text/watermarks from the scene image.
 const PROMPT_B =
   'Replace the person in the scene/background image with the person from the portrait/headshot image. ' +
   'The portrait provides the ONLY face identity to use: copy every facial feature, gender, age, ethnicity, skin color, and hairstyle exactly. ' +
   'The scene/background image provides ONLY the environment, body position, camera angle, and clothing style. ' +
   'CRITICAL: The output must look like a real photograph of the portrait person standing in the scene location. ' +
   'Do NOT create a different person. Do NOT change the gender or facial features from the portrait. ' +
-  'Do NOT use any facial features from the scene image. Preserve photorealistic quality with natural lighting and skin detail.';
+  'Do NOT use any facial features from the scene image. ' +
+  'IMPORTANT: If the scene/background image contains any text, captions, watermarks, logos, subtitles, or written words overlaid on it, ' +
+  'do NOT reproduce that text in the output. Remove all text overlays and render a clean image without any written text. ' +
+  'Preserve photorealistic quality with natural lighting and skin detail.';
 
 
 // Detect actual image content type from buffer magic bytes

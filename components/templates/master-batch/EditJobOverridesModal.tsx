@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Send, CalendarClock, ListOrdered, FileText, Loader2 } from 'lucide-react';
+import { X, Send, CalendarClock, ListOrdered, FileText, Loader2, Globe, Sparkles } from 'lucide-react';
 import type { TemplateJob, MasterConfig } from '@/types';
 
 const TIMEZONES = [
@@ -67,83 +67,105 @@ export default function EditJobOverridesModal({ job, masterConfig, modelName, on
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
       <div
-        className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-[var(--surface)] shadow-2xl"
+        className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-700 dark:bg-neutral-900"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-white px-5 py-3.5 dark:border-neutral-700 dark:bg-neutral-900">
           <div>
-            <h3 className="text-sm font-semibold">Edit Video Settings</h3>
-            <p className="text-[10px] text-[var(--text-muted)]">{modelName || job.name}</p>
+            <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">Edit Video Settings</h3>
+            <p className="text-[11px] text-neutral-500">{modelName || job.name}</p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-[var(--text-muted)] hover:bg-[var(--accent)]">
-            <X className="h-5 w-5" />
+          <button onClick={onClose} className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800">
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="space-y-4 p-4">
-          {/* Custom Caption Toggle */}
+        <div className="space-y-5 p-5">
+          {/* Caption Section */}
           <div>
-            <div className="mb-2 flex items-center justify-between">
-              <label className="text-xs font-medium">Caption</label>
-              <button
-                onClick={() => {
-                  setUseCustomCaption(!useCustomCaption);
-                  if (useCustomCaption) setCaption(masterConfig.caption || '');
-                }}
-                className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                  useCustomCaption
-                    ? 'bg-master/10 text-master dark:text-master-foreground'
-                    : 'bg-[var(--accent)] text-[var(--text-muted)]'
-                }`}
-              >
-                {useCustomCaption ? 'Custom' : 'Using Global'}
-              </button>
+            <div className="mb-2.5 flex items-center justify-between">
+              <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Caption</label>
+              <div className="flex overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-700">
+                <button
+                  onClick={() => { setUseCustomCaption(false); setCaption(masterConfig.caption || ''); }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                    !useCustomCaption
+                      ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                      : 'bg-white text-neutral-500 hover:bg-neutral-50 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-750'
+                  }`}
+                >
+                  <Globe className="h-3 w-3" />
+                  Global
+                </button>
+                <button
+                  onClick={() => setUseCustomCaption(true)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                    useCustomCaption
+                      ? 'bg-master text-white dark:text-master-foreground'
+                      : 'bg-white text-neutral-500 hover:bg-neutral-50 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-750'
+                  }`}
+                >
+                  <Sparkles className="h-3 w-3" />
+                  Custom
+                </button>
+              </div>
             </div>
-            {!useCustomCaption && (
-              <div className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-xs text-[var(--text-muted)]">
+            {!useCustomCaption ? (
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-xs text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800">
                 {masterConfig.caption || '(no global caption)'}
               </div>
-            )}
-            {useCustomCaption && (
+            ) : (
               <textarea
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
                 rows={3}
-                className="w-full rounded-lg border border-master/30 bg-[var(--background)] px-3 py-2 text-sm focus:border-master focus:outline-none focus:ring-1 focus:ring-master"
+                className="w-full rounded-lg border-2 border-master/40 bg-white px-3 py-2.5 text-sm text-neutral-900 focus:border-master focus:outline-none focus:ring-2 focus:ring-master/20 dark:border-master/60 dark:bg-neutral-800 dark:text-neutral-100"
                 placeholder="Custom caption for this video..."
               />
             )}
           </div>
 
-          {/* Custom Timing Toggle */}
+          {/* Timing Section */}
           <div>
-            <div className="mb-2 flex items-center justify-between">
-              <label className="text-xs font-medium">Publish Timing</label>
-              <button
-                onClick={() => {
-                  setUseCustomTiming(!useCustomTiming);
-                  if (useCustomTiming) {
+            <div className="mb-2.5 flex items-center justify-between">
+              <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Publish Timing</label>
+              <div className="flex overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-700">
+                <button
+                  onClick={() => {
+                    setUseCustomTiming(false);
                     setPublishMode(masterConfig.publishMode || 'now');
                     setScheduledFor(masterConfig.scheduledFor || '');
                     setTimezone(masterConfig.timezone || 'America/New_York');
-                  }
-                }}
-                className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                  useCustomTiming
-                    ? 'bg-master/10 text-master dark:text-master-foreground'
-                    : 'bg-[var(--accent)] text-[var(--text-muted)]'
-                }`}
-              >
-                {useCustomTiming ? 'Custom' : 'Using Global'}
-              </button>
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                    !useCustomTiming
+                      ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                      : 'bg-white text-neutral-500 hover:bg-neutral-50 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-750'
+                  }`}
+                >
+                  <Globe className="h-3 w-3" />
+                  Global
+                </button>
+                <button
+                  onClick={() => setUseCustomTiming(true)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                    useCustomTiming
+                      ? 'bg-master text-white dark:text-master-foreground'
+                      : 'bg-white text-neutral-500 hover:bg-neutral-50 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-750'
+                  }`}
+                >
+                  <Sparkles className="h-3 w-3" />
+                  Custom
+                </button>
+              </div>
             </div>
 
-            {!useCustomTiming && (
-              <div className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-xs text-[var(--text-muted)]">
+            {!useCustomTiming ? (
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-xs text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800">
                 {masterConfig.publishMode === 'schedule'
                   ? `Scheduled: ${masterConfig.scheduledFor || '(not set)'}`
                   : masterConfig.publishMode === 'queue'
@@ -152,47 +174,45 @@ export default function EditJobOverridesModal({ job, masterConfig, modelName, on
                   ? 'Draft'
                   : 'Post Now'}
               </div>
-            )}
-
-            {useCustomTiming && (
+            ) : (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2">
                   {modes.map(({ value, label, icon: Icon, desc }) => (
                     <button
                       key={value}
                       onClick={() => setPublishMode(value)}
-                      className={`flex items-center gap-2 rounded-lg border p-2.5 text-left transition-all ${
+                      className={`flex items-center gap-2.5 rounded-lg border-2 p-2.5 text-left transition-all ${
                         publishMode === value
-                          ? 'border-master bg-master/5'
-                          : 'border-[var(--border)] hover:border-master/50'
+                          ? 'border-master bg-master/5 dark:border-master dark:bg-master/10'
+                          : 'border-neutral-200 bg-white hover:border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:border-neutral-600'
                       }`}
                     >
-                      <Icon className={`h-4 w-4 shrink-0 ${publishMode === value ? 'text-master dark:text-master-foreground' : 'text-[var(--text-muted)]'}`} />
+                      <Icon className={`h-4 w-4 shrink-0 ${publishMode === value ? 'text-master-foreground' : 'text-neutral-400'}`} />
                       <div>
-                        <div className="text-xs font-medium">{label}</div>
-                        <div className="text-[10px] text-[var(--text-muted)]">{desc}</div>
+                        <div className={`text-xs font-semibold ${publishMode === value ? 'text-master-foreground' : 'text-neutral-700 dark:text-neutral-300'}`}>{label}</div>
+                        <div className="text-[10px] text-neutral-500">{desc}</div>
                       </div>
                     </button>
                   ))}
                 </div>
 
                 {publishMode === 'schedule' && (
-                  <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+                  <div className="space-y-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-800">
                     <div>
-                      <label className="mb-1 block text-[10px] font-medium text-[var(--text-muted)]">Date & Time</label>
+                      <label className="mb-1 block text-[10px] font-semibold text-neutral-500">Date & Time</label>
                       <input
                         type="datetime-local"
                         value={scheduledFor}
                         onChange={(e) => setScheduledFor(e.target.value)}
-                        className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs"
+                        className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs text-neutral-900 dark:border-neutral-600 dark:bg-neutral-700 dark:text-neutral-100"
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-[10px] font-medium text-[var(--text-muted)]">Timezone</label>
+                      <label className="mb-1 block text-[10px] font-semibold text-neutral-500">Timezone</label>
                       <select
                         value={timezone}
                         onChange={(e) => setTimezone(e.target.value)}
-                        className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs"
+                        className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-xs text-neutral-900 dark:border-neutral-600 dark:bg-neutral-700 dark:text-neutral-100"
                       >
                         {TIMEZONES.map((tz) => (
                           <option key={tz.value} value={tz.value}>{tz.label}</option>
@@ -207,7 +227,7 @@ export default function EditJobOverridesModal({ job, masterConfig, modelName, on
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] px-4 py-3">
+        <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-neutral-200 bg-white px-5 py-3.5 dark:border-neutral-700 dark:bg-neutral-900">
           {hasExistingOverride && (
             <button
               onClick={async () => {
@@ -225,21 +245,21 @@ export default function EditJobOverridesModal({ job, masterConfig, modelName, on
                 }
               }}
               disabled={saving}
-              className="mr-auto rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-500 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:hover:bg-red-950/30"
+              className="mr-auto rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-500 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-700 dark:hover:bg-red-950/30"
             >
               Reset to Global
             </button>
           )}
           <button
             onClick={onClose}
-            className="rounded-lg border border-[var(--border)] px-4 py-2 text-xs font-medium transition-colors hover:bg-[var(--accent)]"
+            className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-xs font-semibold text-neutral-700 transition-colors hover:bg-neutral-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-750"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-1.5 rounded-lg bg-master px-4 py-2 text-xs font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 dark:text-master-foreground"
+            className="flex items-center gap-1.5 rounded-lg bg-master px-4 py-2 text-xs font-bold text-white transition-all hover:opacity-90 disabled:opacity-50 dark:text-master-foreground"
           >
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Save
