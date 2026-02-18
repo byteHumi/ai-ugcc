@@ -6,6 +6,7 @@ import {
   upsertMediaItem,
   upsertAccountSnapshot,
   upsertMediaSnapshot,
+  getMediaExternalIds,
 } from '../db-analytics';
 
 type AccountRow = {
@@ -15,18 +16,15 @@ type AccountRow = {
   account_id?: string;
 };
 
-export async function syncAccount(account: AccountRow) {
+export async function syncAccount(account: AccountRow, full = false) {
   const { id, platform, username } = account;
 
   try {
-    if (platform === 'instagram') {
-      await syncInstagram(id, username, account.account_id);
-    } else if (platform === 'tiktok') {
-      await syncTikTok(id, username, account.account_id);
-    } else if (platform === 'youtube') {
-      await syncYouTube(id, username, account.account_id);
-    } else {
-      throw new Error(`Unsupported platform: ${platform}`);
+    switch (platform) {
+      case 'instagram': await syncInstagram(id, username, account.account_id, full); break;
+      case 'tiktok':    await syncTikTok(id, username, account.account_id, full); break;
+      case 'youtube':   await syncYouTube(id, username, account.account_id, full); break;
+      default: throw new Error(`Unsupported platform: ${platform}`);
     }
     return { success: true };
   } catch (error: unknown) {
@@ -36,10 +34,18 @@ export async function syncAccount(account: AccountRow) {
   }
 }
 
-async function syncInstagram(accountDbId: string, username: string, existingUserId?: string) {
+async function syncInstagram(accountDbId: string, username: string, existingUserId?: string, full = false) {
   const userId = existingUserId || await resolveInstagramUser(username);
-  const profile = await fetchInstagramProfile(userId);
-  const reels = await fetchInstagramReels(userId);
+  const [profile, knownIds] = await Promise.all([
+    fetchInstagramProfile(userId),
+    getMediaExternalIds(accountDbId),
+  ]);
+
+  const reels = await fetchInstagramReels(
+    userId,
+    full ? 10 : 2,
+    full ? undefined : (knownIds as Set<string>),
+  );
 
   let totalViews = 0, totalLikes = 0, totalComments = 0, totalShares = 0, totalSaves = 0;
   for (const r of reels) {
@@ -66,7 +72,6 @@ async function syncInstagram(accountDbId: string, username: string, existingUser
     metadata: { following: profile.following, mediaCount: profile.mediaCount, totalSaves },
   });
 
-  // Snapshot
   await upsertAccountSnapshot(accountDbId, {
     followers: profile.followers,
     totalViews,
@@ -76,7 +81,6 @@ async function syncInstagram(accountDbId: string, username: string, existingUser
     engagementRate,
   });
 
-  // Upsert media items + snapshots
   for (const r of reels) {
     const interactions = r.likes + r.comments + r.shares;
     const mediaEngagement = r.views > 0 ? (interactions / r.views) * 100 : 0;
@@ -107,13 +111,18 @@ async function syncInstagram(accountDbId: string, username: string, existingUser
   }
 }
 
-async function syncTikTok(accountDbId: string, username: string, existingSecUid?: string) {
-  console.log(`[syncTikTok] Starting sync for ${username} (dbId: ${accountDbId})`);
-  const userInfo = await resolveTikTokUser(username);
+async function syncTikTok(accountDbId: string, username: string, existingSecUid?: string, full = false) {
+  const [userInfo, knownIds] = await Promise.all([
+    resolveTikTokUser(username),
+    getMediaExternalIds(accountDbId),
+  ]);
   const secUid = existingSecUid || userInfo.secUid;
-  console.log(`[syncTikTok] secUid: ${secUid?.substring(0, 30)}..., followers: ${userInfo.followers}`);
-  const posts = await fetchTikTokPosts(secUid);
-  console.log(`[syncTikTok] Fetched ${posts.length} posts for ${username}`);
+
+  const posts = await fetchTikTokPosts(
+    secUid,
+    full ? 5 : 2,
+    full ? undefined : (knownIds as Set<string>),
+  );
 
   let totalViews = 0, totalLikes = 0, totalComments = 0, totalShares = 0;
   for (const p of posts) {
@@ -125,7 +134,6 @@ async function syncTikTok(accountDbId: string, username: string, existingSecUid?
 
   const totalInteractions = totalLikes + totalComments + totalShares;
   const engagementRate = totalViews > 0 ? (totalInteractions / totalViews) * 100 : 0;
-  console.log(`[syncTikTok] Totals for ${username}: views=${totalViews}, likes=${totalLikes}, comments=${totalComments}, shares=${totalShares}`);
 
   await updateAnalyticsAccount(accountDbId, {
     accountId: userInfo.secUid,
@@ -179,9 +187,17 @@ async function syncTikTok(accountDbId: string, username: string, existingSecUid?
   }
 }
 
-async function syncYouTube(accountDbId: string, identifier: string, existingChannelId?: string) {
-  const channel = await resolveYouTubeChannel(existingChannelId || identifier);
-  const videos = await fetchYouTubeVideos(channel.channelId);
+async function syncYouTube(accountDbId: string, identifier: string, existingChannelId?: string, full = false) {
+  const [channel, knownIds] = await Promise.all([
+    resolveYouTubeChannel(existingChannelId || identifier),
+    getMediaExternalIds(accountDbId),
+  ]);
+
+  const videos = await fetchYouTubeVideos(
+    channel.channelId,
+    full ? 120 : 50,
+    full ? undefined : (knownIds as Set<string>),
+  );
 
   let totalViews = 0, totalLikes = 0, totalComments = 0;
   for (const v of videos) {
@@ -245,14 +261,13 @@ async function syncYouTube(accountDbId: string, identifier: string, existingChan
   }
 }
 
-export async function syncAllAccounts(accounts: AccountRow[]) {
+export async function syncAllAccounts(accounts: AccountRow[], full = false) {
   const results: { id: string; success: boolean; error?: string }[] = [];
   for (const account of accounts) {
-    // Delay between accounts to avoid RapidAPI rate limits
     if (results.length > 0) {
       await new Promise(r => setTimeout(r, 2000));
     }
-    const result = await syncAccount(account);
+    const result = await syncAccount(account, full);
     results.push({ id: account.id, ...result });
   }
   return results;

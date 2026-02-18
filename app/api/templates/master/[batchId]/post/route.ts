@@ -432,10 +432,27 @@ export async function POST(
           timeout: 60000,
         });
 
-        const latePost = postData.post;
+        let latePost = postData.post;
         const latePostId = latePost._id;
         createdLatePostId = latePostId;
         log('POST', `Job ${jobId}: Late post created: ${latePostId}`);
+
+        // Auto-retry failed platforms once
+        const failedPlatforms = latePost.platforms?.filter(p => p.status === 'failed') || [];
+        if (failedPlatforms.length > 0 && failedPlatforms.length < platformTargets.length) {
+          log('RETRY', `Job ${jobId}: ${failedPlatforms.length} platform(s) failed, auto-retrying once`);
+          await new Promise((r) => setTimeout(r, 3000));
+          try {
+            const retryData = await lateApiRequest<CreatePostResponse>(`/posts/${latePostId}/retry`, {
+              method: 'POST',
+              retries: 0,
+            });
+            latePost = retryData.post;
+            log('RETRY', `Job ${jobId}: auto-retry complete`);
+          } catch (retryErr) {
+            log('RETRY', `Job ${jobId}: auto-retry failed, will save as failed for manual retry`);
+          }
+        }
 
         for (const target of platformTargets) {
           const platformResult = latePost.platforms?.find((p) => {

@@ -1,8 +1,8 @@
 import { config } from './config';
 
 const LATE_API_TIMEOUT = 30000;
-const MAX_RETRIES = 3;
-const RETRY_DELAYS = [1000, 3000, 8000]; // Exponential backoff
+const MAX_RETRIES = 1;
+const RETRY_DELAYS = [2000];
 
 export class LateApiError extends Error {
   status: number;

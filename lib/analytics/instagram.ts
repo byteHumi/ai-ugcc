@@ -60,7 +60,7 @@ type InstagramReel = {
   saves: number;
 };
 
-export async function fetchInstagramReels(userId: string, maxPages = 10): Promise<InstagramReel[]> {
+export async function fetchInstagramReels(userId: string, maxPages = 2, knownIds?: Set<string>): Promise<InstagramReel[]> {
   const reels: InstagramReel[] = [];
   let nextMaxId: string | undefined;
 
@@ -73,10 +73,13 @@ export async function fetchInstagramReels(userId: string, maxPages = 10): Promis
     const items = data?.items || data?.data?.items || [];
     if (items.length === 0) break;
 
+    let hitKnown = false;
     for (const item of items) {
       const media = item?.media || item;
+      const externalId = String(media?.pk || media?.id || media?.code || '');
+      if (knownIds?.has(externalId)) { hitKnown = true; break; }
       reels.push({
-        externalId: String(media?.pk || media?.id || media?.code || ''),
+        externalId,
         caption: media?.caption?.text || '',
         url: media?.code ? `https://www.instagram.com/reel/${media.code}/` : '',
         thumbnailUrl: media?.image_versions2?.candidates?.[0]?.url || media?.thumbnail_url || '',
@@ -89,6 +92,7 @@ export async function fetchInstagramReels(userId: string, maxPages = 10): Promis
       });
     }
 
+    if (hitKnown) break;
     nextMaxId = data?.paging_info?.max_id || data?.next_max_id;
     if (!nextMaxId) break;
   }

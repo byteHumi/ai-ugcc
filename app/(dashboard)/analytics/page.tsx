@@ -74,7 +74,7 @@ function AnalyticsContent() {
         showToast(`Imported ${data.added.length} account(s). Fetching metrics...`, 'success');
         // Step 2: Fetch actual metrics for all accounts
         try {
-          await fetch('/api/analytics/refresh', { method: 'POST' });
+          await fetch('/api/analytics/refresh?mode=quick', { method: 'POST' });
           showToast('All accounts synced successfully', 'success');
         } catch {
           showToast('Some accounts may not have synced. Try Refresh All.', 'error');
