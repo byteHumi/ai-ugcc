@@ -407,6 +407,12 @@ export type AnalyticsMediaItem = {
   accountDisplayName?: string;
 };
 
+export type PostingActivityEntry = {
+  date: string;
+  posts: number;
+  totalViews: number;
+};
+
 export type AnalyticsOverview = {
   totalFollowers: number;
   totalViews: number;
@@ -423,5 +429,7 @@ export type AnalyticsOverview = {
     engagementRate: number;
     accountCount: number;
   }[];
+  postingActivity: PostingActivityEntry[];
+  totalVideos: number;
   history: AnalyticsSnapshot[];
 };

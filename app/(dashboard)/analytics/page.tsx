@@ -296,7 +296,7 @@ function AnalyticsContent() {
           {/* Engagement + Top Videos */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
-              <PostingActivity items={mediaItems} />
+              <PostingActivity />
             </div>
             <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
               <TopVideosTable items={mediaItems} />

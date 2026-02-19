@@ -1,9 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { CalendarDays } from 'lucide-react';
-import type { AnalyticsMediaItem } from '@/types';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
+import type { PostingActivityEntry } from '@/types';
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -11,28 +10,131 @@ function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const FILTERS = [
+  { label: '7d', days: 7 },
+  { label: '30d', days: 30 },
+  { label: '3m', days: 90 },
+  { label: 'All', days: 0 },
+] as const;
 
-export default function PostingActivity({ items }: { items: AnalyticsMediaItem[] }) {
-  const { postingData, bestDay } = useMemo(() => {
-    const dayData = DAYS.map(d => ({ day: d, posts: 0, avgViews: 0, totalViews: 0 }));
-    items.forEach(item => {
-      if (!item.publishedAt) return;
-      const dayIdx = new Date(item.publishedAt).getDay();
-      dayData[dayIdx].posts++;
-      dayData[dayIdx].totalViews += item.views;
-    });
-    dayData.forEach(d => {
-      d.avgViews = d.posts > 0 ? Math.round(d.totalViews / d.posts) : 0;
-    });
-    const best = dayData.reduce((b, d) => d.avgViews > b.avgViews ? d : b, dayData[0]);
-    return { postingData: dayData, bestDay: best };
-  }, [items]);
+const BAR_COLOR = '#f59e0b';
+const BAR_TODAY = '#8b5cf6';
 
-  if (items.length === 0) {
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatDateLabel(dateStr: string, totalDays: number): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  if (totalDays <= 7) {
+    return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+  }
+  if (totalDays <= 90) {
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+  return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+}
+
+export default function PostingActivity() {
+  const [filter, setFilter] = useState(30);
+  const [rawData, setRawData] = useState<PostingActivityEntry[]>([]);
+  const [totalVideos, setTotalVideos] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [todayStr, setTodayStr] = useState('');
+
+  useEffect(() => {
+    setTodayStr(toLocalDateStr(new Date()));
+  }, []);
+
+  const fetchData = useCallback(async (days: number) => {
+    try {
+      const param = days > 0 ? `?days=${days}` : '';
+      const res = await fetch(`/api/analytics/posting-activity${param}`, { cache: 'no-store' });
+      const json = await res.json();
+      console.log('[PostingActivity] API response:', { entries: json.postingActivity?.length, totalVideos: json.totalVideos, sample: json.postingActivity?.slice(0, 3) });
+      setRawData(json.postingActivity || []);
+      setTotalVideos(json.totalVideos || 0);
+    } catch (e) {
+      console.error('Failed to load posting activity:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchData(filter);
+  }, [filter, fetchData]);
+
+  // Fill in missing dates so the chart has no gaps
+  const chartData = useMemo(() => {
+    if (rawData.length === 0) return [];
+
+    const dataMap = new Map(rawData.map(d => [d.date, d]));
+
+    // Determine date range
+    const allDates = rawData.map(d => d.date).sort();
+    const start = new Date(allDates[0] + 'T00:00:00');
+    const end = new Date(allDates[allDates.length - 1] + 'T00:00:00');
+
+    // If today is after the last data point, extend to today
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    if (now > end) end.setTime(now.getTime());
+
+    const filled: { date: string; label: string; posts: number; totalViews: number }[] = [];
+    const cursor = new Date(start);
+    const totalSpanDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+    while (cursor <= end) {
+      const key = toLocalDateStr(cursor);
+      const entry = dataMap.get(key);
+      filled.push({
+        date: key,
+        label: formatDateLabel(key, totalSpanDays),
+        posts: entry?.posts || 0,
+        totalViews: entry?.totalViews || 0,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return filled;
+  }, [rawData]);
+
+  // Best day (highest uploads)
+  const bestDay = useMemo(() => {
+    if (chartData.length === 0) return null;
+    return chartData.reduce((b, d) => (d.posts > b.posts ? d : b), chartData[0]);
+  }, [chartData]);
+
+  // Determine tick interval based on data length
+  const tickInterval = useMemo(() => {
+    const len = chartData.length;
+    if (len <= 7) return 0; // show every tick
+    if (len <= 31) return Math.ceil(len / 10) - 1;
+    if (len <= 90) return Math.ceil(len / 12) - 1;
+    return Math.ceil(len / 10) - 1;
+  }, [chartData]);
+
+  if (!loading && (totalVideos === 0 || chartData.length === 0)) {
     return (
-      <div className="flex h-full min-h-[240px] items-center justify-center text-sm text-[var(--text-muted)]">
-        No posting data yet.
+      <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-2">
+        <p className="text-sm text-[var(--text-muted)]">No posting data yet.</p>
+        <div className="flex rounded-lg border border-[var(--border)] p-0.5">
+          {FILTERS.map(f => (
+            <button
+              key={f.days}
+              onClick={() => setFilter(f.days)}
+              className={`rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                filter === f.days
+                  ? 'bg-[var(--primary)] text-white'
+                  : 'text-[var(--text-muted)] hover:text-[var(--foreground)]'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
     );
   }
@@ -45,28 +147,91 @@ export default function PostingActivity({ items }: { items: AnalyticsMediaItem[]
             Posting Activity
           </p>
           <p className="mt-1 text-2xl font-bold tracking-tight">
-            {items.length} <span className="text-sm font-medium text-[var(--text-muted)]">videos</span>
+            {loading ? '...' : totalVideos}{' '}
+            <span className="text-sm font-medium text-[var(--text-muted)]">videos</span>
           </p>
         </div>
-        <span className="rounded-full bg-[var(--muted)] px-2.5 py-1 text-[11px] text-[var(--text-muted)]">
-          Best: <span className="font-semibold text-[var(--foreground)]">{bestDay.day}</span>
-        </span>
+        <div className="flex items-center gap-2">
+          {bestDay && bestDay.posts > 0 && (
+            <span className="rounded-full bg-[var(--muted)] px-2.5 py-1 text-[11px] text-[var(--text-muted)]">
+              Peak: <span className="font-semibold text-[var(--foreground)]">{bestDay.posts}</span> on{' '}
+              <span className="font-semibold text-[var(--foreground)]">
+                {new Date(bestDay.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </span>
+            </span>
+          )}
+          <div className="flex rounded-lg border border-[var(--border)] p-0.5">
+            {FILTERS.map(f => (
+              <button
+                key={f.days}
+                onClick={() => setFilter(f.days)}
+                className={`rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                  filter === f.days
+                    ? 'bg-[var(--primary)] text-white'
+                    : 'text-[var(--text-muted)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="h-[200px] w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={postingData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+          <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="day" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={30} />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
+              axisLine={false}
+              tickLine={false}
+              interval={tickInterval}
+            />
+            <YAxis
+              tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+              axisLine={false}
+              tickLine={false}
+              width={24}
+              allowDecimals={false}
+            />
             <Tooltip
-              contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, padding: '6px 10px' }}
+              contentStyle={{
+                backgroundColor: 'var(--popover)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                fontSize: 12,
+                padding: '6px 10px',
+              }}
+              labelFormatter={(_, payload) => {
+                const entry = payload?.[0]?.payload;
+                if (!entry?.date) return '';
+                const d = new Date(entry.date + 'T00:00:00');
+                return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+              }}
               formatter={(v: number, name: string) => [
-                name === 'posts' ? `${v} posts` : formatNumber(v) + ' avg views',
-                name === 'posts' ? 'Posts' : 'Avg Views',
+                name === 'posts' ? `${v} video${v !== 1 ? 's' : ''}` : formatNumber(v) + ' views',
+                name === 'posts' ? 'Uploaded' : 'Total Views',
               ]}
             />
-            <Bar dataKey="posts" fill="#f59e0b" fillOpacity={0.8} radius={[4, 4, 0, 0]} barSize={24} />
+            {todayStr && (
+              <ReferenceLine
+                x={chartData.find(d => d.date === todayStr)?.label}
+                stroke="var(--primary)"
+                strokeDasharray="4 4"
+                strokeOpacity={0.5}
+              />
+            )}
+            <Bar dataKey="posts" radius={[3, 3, 0, 0]} maxBarSize={20}>
+              {chartData.map((entry) => (
+                <Cell
+                  key={entry.date}
+                  fill={entry.date === todayStr ? BAR_TODAY : BAR_COLOR}
+                  fillOpacity={entry.date === todayStr ? 1 : 0.8}
+                />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
