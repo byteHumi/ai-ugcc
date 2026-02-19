@@ -192,8 +192,76 @@ export async function POST(req: Request) {
       console.log('[FirstFrame] Gemini done, uploading results...');
       bufferA = geminiA;
       bufferB = geminiB;
+    } else if (provider === 'gpt-image') {
+      // --- GPT Image 1.5 path (via FAL) ---
+      if (!config.FAL_KEY) {
+        return NextResponse.json(
+          { error: 'FAL API key not configured' },
+          { status: 500 },
+        );
+      }
+
+      fal.config({ credentials: config.FAL_KEY });
+
+      // Upload directly to FAL's CDN
+      const [falModelUrl, falFrameUrl] = await Promise.all([
+        fal.storage.upload(new Blob([new Uint8Array(modelBuf)], { type: modelType.contentType })),
+        fal.storage.upload(new Blob([new Uint8Array(frameBuf)], { type: frameType.contentType })),
+      ]);
+
+      const imageUrls = [falModelUrl, falFrameUrl];
+
+      console.log('[FirstFrame] FAL URLs — model (face):', falModelUrl.slice(0, 60), '| scene:', falFrameUrl.slice(0, 60));
+      console.log('[FirstFrame] Calling gpt-image-1.5/edit (2 variants)...');
+
+      const [resultA, resultB] = await Promise.all([
+        fal.subscribe('fal-ai/gpt-image-1.5/edit', {
+          input: {
+            image_urls: imageUrls,
+            prompt: PROMPT_A,
+            image_size: 'auto' as const,
+            quality: 'high' as const,
+            input_fidelity: 'high' as const,
+            num_images: 1,
+            output_format: 'png' as const,
+          },
+          logs: true,
+        }),
+        fal.subscribe('fal-ai/gpt-image-1.5/edit', {
+          input: {
+            image_urls: imageUrls,
+            prompt: PROMPT_B,
+            image_size: 'auto' as const,
+            quality: 'high' as const,
+            input_fidelity: 'high' as const,
+            num_images: 1,
+            output_format: 'png' as const,
+          },
+          logs: true,
+        }),
+      ]);
+
+      console.log('[FirstFrame] gpt-image-1.5 done, downloading results...');
+
+      const gptImageUrlA = resultA.data?.images?.[0]?.url;
+      const gptImageUrlB = resultB.data?.images?.[0]?.url;
+
+      if (!gptImageUrlA || !gptImageUrlB) {
+        console.error('[FirstFrame] Missing result URLs:', {
+          A: JSON.stringify(resultA.data).slice(0, 200),
+          B: JSON.stringify(resultB.data).slice(0, 200),
+        });
+        throw new Error('No image URL returned from GPT Image 1.5');
+      }
+
+      console.log('[FirstFrame] Result URLs:', { A: gptImageUrlA.slice(0, 60), B: gptImageUrlB.slice(0, 60) });
+
+      [bufferA, bufferB] = await Promise.all([
+        fetchWithRetry(gptImageUrlA),
+        fetchWithRetry(gptImageUrlB),
+      ]);
     } else {
-      // --- FAL path (original) ---
+      // --- FAL path (Nano Banana) ---
       if (!config.FAL_KEY) {
         return NextResponse.json(
           { error: 'FAL API key not configured' },

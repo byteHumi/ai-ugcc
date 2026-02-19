@@ -123,7 +123,7 @@ export type VideoGenConfig = {
   firstFrameEnabled?: boolean;
   extractedFrameUrl?: string;      // GCS URL of the picked extracted frame
   firstFrameResolution?: '1K' | '2K' | '4K';
-  firstFrameProvider?: 'gemini' | 'fal';
+  firstFrameProvider?: 'gemini' | 'fal' | 'gpt-image';
   // Master mode: per-model first frame selections (modelId → selected first frame GCS URL)
   masterFirstFrames?: Record<string, string>;
 };
@@ -191,7 +191,7 @@ export type BatchVideoGenConfig = {
   firstFrameEnabled?: boolean;
   extractedFrameUrl?: string;    // Single extracted frame, used for all
   firstFrameResolution?: '1K' | '2K' | '4K';
-  firstFrameProvider?: 'gemini' | 'fal';
+  firstFrameProvider?: 'gemini' | 'fal' | 'gpt-image';
 };
 
 // Compose types

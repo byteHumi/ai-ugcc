@@ -30,7 +30,7 @@ export async function generateFirstFrameRequest(params: {
   frameImageUrl: string;
   resolution: '1K' | '2K' | '4K';
   modelId?: string | null;
-  provider?: 'gemini' | 'fal';
+  provider?: 'gemini' | 'fal' | 'gpt-image';
 }): Promise<FirstFrameOption[]> {
   const res = await fetch('/api/generate-first-frame', {
     method: 'POST',
