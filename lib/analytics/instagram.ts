@@ -60,7 +60,7 @@ type InstagramReel = {
   saves: number;
 };
 
-export async function fetchInstagramReels(userId: string, maxPages = 2, knownIds?: Set<string>): Promise<InstagramReel[]> {
+export async function fetchInstagramReels(userId: string, maxPages = 10): Promise<InstagramReel[]> {
   const reels: InstagramReel[] = [];
   let nextMaxId: string | undefined;
 
@@ -73,18 +73,16 @@ export async function fetchInstagramReels(userId: string, maxPages = 2, knownIds
     const items = data?.items || data?.data?.items || [];
     if (items.length === 0) break;
 
-    let hitKnown = false;
     for (const item of items) {
       const media = item?.media || item;
       const externalId = String(media?.pk || media?.id || media?.code || '');
-      if (knownIds?.has(externalId)) { hitKnown = true; break; }
       reels.push({
         externalId,
         caption: media?.caption?.text || '',
         url: media?.code ? `https://www.instagram.com/reel/${media.code}/` : '',
         thumbnailUrl: media?.image_versions2?.candidates?.[0]?.url || media?.thumbnail_url || '',
         publishedAt: media?.taken_at ? new Date(Number(media.taken_at) * 1000).toISOString() : '',
-        views: Number(media?.video_play_count ?? media?.play_count ?? 0),
+        views: Number(media?.video_play_count ?? media?.play_count ?? media?.view_count ?? 0),
         likes: Number(media?.like_count ?? 0),
         comments: Number(media?.comment_count ?? 0),
         shares: Number(media?.share_count ?? media?.reshare_count ?? media?.send_count ?? media?.shares ?? 0),
@@ -92,7 +90,6 @@ export async function fetchInstagramReels(userId: string, maxPages = 2, knownIds
       });
     }
 
-    if (hitKnown) break;
     nextMaxId = data?.paging_info?.max_id || data?.next_max_id;
     if (!nextMaxId) break;
   }

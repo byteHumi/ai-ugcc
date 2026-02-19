@@ -9,7 +9,7 @@ export default function PostFilters({
 }) {
   return (
     <div className="mb-4 flex flex-wrap gap-2">
-      {['all', 'published', 'scheduled', 'draft', 'failed'].map((f) => (
+      {['all', 'published', 'scheduled', 'draft', 'failed', 'duplicate'].map((f) => (
         <button
           key={f}
           type="button"

@@ -347,12 +347,71 @@ export function usePosts(options: UsePostsOptions = {}) {
     }
   }, [isPageVisible, loadPosts]);
 
+  // Duplicate detection: per-account, check last 5 posts — if 2+ share the same caption, mark as duplicate
+  // Returns both a quick-lookup Set and a detailed Map with sibling links per platform
+  const { duplicateIds, duplicateMap } = useMemo(() => {
+    type AcctEntry = { postId: string; caption: string; timeMs: number; platformPostUrl?: string };
+    // Group posts by each platform account they target
+    const accountPosts = new Map<string, { platform: string; entries: AcctEntry[] }>();
+    for (const post of postsAll) {
+      const caption = (post.content || '').trim().toLowerCase();
+      if (!caption) continue;
+      const timeMs = getPostTimeMs(post);
+      for (const plat of post.platforms || []) {
+        const acctId = typeof plat.accountId === 'string' ? plat.accountId : plat.accountId?._id;
+        if (!acctId) continue;
+        const key = `${plat.platform}\0${acctId}`;
+        let bucket = accountPosts.get(key);
+        if (!bucket) { bucket = { platform: plat.platform, entries: [] }; accountPosts.set(key, bucket); }
+        bucket.entries.push({ postId: post._id, caption, timeMs, platformPostUrl: plat.platformPostUrl });
+      }
+    }
+
+    const ids = new Set<string>();
+    const map = new Map<string, { platform: string; postId: string; url?: string; createdAt?: string }[]>();
+
+    for (const { platform, entries } of accountPosts.values()) {
+      // Sort newest first, take last 5
+      entries.sort((a, b) => b.timeMs - a.timeMs);
+      const recent = entries.slice(0, 5);
+      // Group by caption within these 5
+      const captionGroups = new Map<string, AcctEntry[]>();
+      for (const entry of recent) {
+        const group = captionGroups.get(entry.caption);
+        if (group) group.push(entry);
+        else captionGroups.set(entry.caption, [entry]);
+      }
+      for (const group of captionGroups.values()) {
+        if (group.length < 2) continue;
+        for (const entry of group) {
+          ids.add(entry.postId);
+          // Add siblings (the OTHER posts in this group) to this post's duplicate map
+          const siblings = group
+            .filter((s) => s.postId !== entry.postId)
+            .map((s) => ({
+              platform,
+              postId: s.postId,
+              url: s.platformPostUrl,
+              createdAt: s.timeMs ? new Date(s.timeMs).toISOString() : undefined,
+            }));
+          const existing = map.get(entry.postId);
+          if (existing) existing.push(...siblings);
+          else map.set(entry.postId, [...siblings]);
+        }
+      }
+    }
+    return { duplicateIds: ids, duplicateMap: map };
+  }, [postsAll]);
+
   const posts = useMemo(() => {
     const cutoff = getDateFilterCutoffMs(selectedDateFilter);
     const sortDirection = getDateFilterSortDirection(selectedDateFilter);
 
     const filtered = postsAll
-      .filter((post) => postMatchesFilter(post, postsFilter))
+      .filter((post) => {
+        if (postsFilter === 'duplicate') return duplicateIds.has(post._id);
+        return postMatchesFilter(post, postsFilter);
+      })
       .filter((post) => selectedModelId === 'all' || post.modelId === selectedModelId)
       .filter((post) => {
         if (cutoff === null) return true;
@@ -364,7 +423,7 @@ export function usePosts(options: UsePostsOptions = {}) {
         ? getPostTimeMs(b) - getPostTimeMs(a)
         : getPostTimeMs(a) - getPostTimeMs(b)
     );
-  }, [postsAll, postsFilter, selectedModelId, selectedDateFilter]);
+  }, [postsAll, postsFilter, selectedModelId, selectedDateFilter, duplicateIds]);
 
   const refresh = useCallback(async () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -374,5 +433,5 @@ export function usePosts(options: UsePostsOptions = {}) {
     scheduleNext();
   }, [loadPosts, scheduleNext]);
 
-  return { posts, postsFilter, setPostsFilter, isLoadingPage, refresh };
+  return { posts, postsFilter, setPostsFilter, isLoadingPage, refresh, duplicateIds, duplicateMap };
 }

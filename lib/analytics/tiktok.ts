@@ -71,7 +71,7 @@ type TikTokPost = {
   shares: number;
 };
 
-export async function fetchTikTokPosts(secUid: string, maxPages = 2, knownIds?: Set<string>): Promise<TikTokPost[]> {
+export async function fetchTikTokPosts(secUid: string, maxPages = 5): Promise<TikTokPost[]> {
   const posts: TikTokPost[] = [];
   let cursor = '0';
 
@@ -83,12 +83,10 @@ export async function fetchTikTokPosts(secUid: string, maxPages = 2, knownIds?: 
     const items = data?.itemList || data?.items || [];
     if (items.length === 0) break;
 
-    let hitKnown = false;
     for (const item of items) {
       const statsV2 = item?.statsV2 || {};
       const stats = item?.stats || {};
       const externalId = String(item?.id || '');
-      if (knownIds?.has(externalId)) { hitKnown = true; break; }
       posts.push({
         externalId,
         caption: item?.desc || '',
@@ -102,7 +100,6 @@ export async function fetchTikTokPosts(secUid: string, maxPages = 2, knownIds?: 
       });
     }
 
-    if (hitKnown) break;
     const hasMore = data?.hasMore ?? data?.has_more;
     cursor = String(data?.cursor ?? '0');
     if (!hasMore || cursor === '0') break;

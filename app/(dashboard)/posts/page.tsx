@@ -16,7 +16,7 @@ function PostsPageContent() {
   const [modelFilter, setModelFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState<DateFilterValue>('newest');
   const { models: modelOptions } = useModelFilterOptions();
-  const { posts, postsFilter, setPostsFilter, isLoadingPage, refresh } = usePosts({
+  const { posts, postsFilter, setPostsFilter, isLoadingPage, refresh, duplicateIds, duplicateMap } = usePosts({
     modelId: modelFilter === 'all' ? undefined : modelFilter,
     dateFilter,
   });
@@ -64,6 +64,8 @@ function PostsPageContent() {
         posts={posts}
         isLoading={isLoadingPage}
         refresh={refresh}
+        duplicateIds={duplicateIds}
+        duplicateMap={duplicateMap}
         onCreatePost={() => {
           setPreselectedVideoUrl(null);
           setCreatePostModal(true);

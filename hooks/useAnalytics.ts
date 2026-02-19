@@ -1,9 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { AnalyticsAccount, AnalyticsOverview, AnalyticsMediaItem } from '@/types';
-
-const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
 
 // Module-level cache
 let _overviewCache: AnalyticsOverview | null = null;
@@ -17,7 +15,6 @@ export function useAnalytics() {
   const [mediaItems, setMediaItems] = useState<AnalyticsMediaItem[]>(_mediaCache);
   const [loading, setLoading] = useState(_accountsCache.length === 0);
   const [syncing, setSyncing] = useState(false);
-  const autoRefreshChecked = useRef(false);
 
   // Load data from our own DB (cheap, no external API calls)
   const loadData = useCallback(async (force = false) => {
@@ -62,27 +59,6 @@ export function useAnalytics() {
     loadData();
   }, [loadData]);
 
-  // Auto-refresh once if any account hasn't been synced in 24hrs
-  useEffect(() => {
-    if (loading || autoRefreshChecked.current) return;
-    autoRefreshChecked.current = true;
-
-    if (accounts.length === 0) return;
-    const now = Date.now();
-    const needsRefresh = accounts.some(a => {
-      if (!a.lastSyncedAt) return true;
-      return now - new Date(a.lastSyncedAt).getTime() > TWENTY_FOUR_HOURS;
-    });
-
-    if (needsRefresh) {
-      setSyncing(true);
-      fetch('/api/analytics/refresh?mode=quick', { method: 'POST' })
-        .then(() => loadData(true))
-        .catch(e => console.error('Auto-refresh failed:', e))
-        .finally(() => setSyncing(false));
-    }
-  }, [loading, accounts, loadData]);
-
   const addAccount = useCallback(async (platform: string, username: string) => {
     try {
       setSyncing(true);
@@ -115,11 +91,15 @@ export function useAnalytics() {
     }
   }, [loadData]);
 
-  const refreshAll = useCallback(async () => {
+  // Hard Sync: always full sync, respects once-per-day guard unless forced
+  const hardSync = useCallback(async (force = false) => {
     try {
       setSyncing(true);
-      await fetch('/api/analytics/refresh', { method: 'POST' });
+      const url = force ? '/api/analytics/refresh?force=true' : '/api/analytics/refresh';
+      const res = await fetch(url, { method: 'POST' });
+      const data = await res.json();
       await loadData(true);
+      return data;
     } finally {
       setSyncing(false);
     }
@@ -134,7 +114,7 @@ export function useAnalytics() {
     addAccount,
     removeAccount,
     refreshAccount,
-    refreshAll,
+    hardSync,
     reload: () => loadData(true),
   };
 }

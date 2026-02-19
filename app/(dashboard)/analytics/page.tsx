@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from 'react';
-import { RefreshCw, Plus, BarChart3, Link2, Filter, ArrowDownUp } from 'lucide-react';
+import { HardDriveDownload, RefreshCw, Plus, BarChart3, Link2, Filter, ArrowDownUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAnalytics } from '@/hooks/useAnalytics';
@@ -44,7 +44,7 @@ function AnalyticsContent() {
     addAccount,
     removeAccount,
     refreshAccount,
-    refreshAll,
+    hardSync,
     reload,
   } = useAnalytics();
 
@@ -72,12 +72,12 @@ function AnalyticsContent() {
 
       if (data.added?.length > 0) {
         showToast(`Imported ${data.added.length} account(s). Fetching metrics...`, 'success');
-        // Step 2: Fetch actual metrics for all accounts
+        // Step 2: Hard sync all accounts
         try {
-          await fetch('/api/analytics/refresh?mode=quick', { method: 'POST' });
+          await hardSync(true);
           showToast('All accounts synced successfully', 'success');
         } catch {
-          showToast('Some accounts may not have synced. Try Refresh All.', 'error');
+          showToast('Some accounts may not have synced. Try Hard Sync.', 'error');
         }
       } else {
         showToast('No new accounts to import', 'info');
@@ -89,21 +89,25 @@ function AnalyticsContent() {
       setAutoSyncing(false);
       syncingRef.current = false;
     }
-  }, [showToast, reload]);
+  }, [showToast, reload, hardSync]);
 
-  const handleRefreshAll = useCallback(async () => {
+  const handleHardSync = useCallback(async () => {
     if (syncingRef.current) return;
     syncingRef.current = true;
     try {
-      showToast('Syncing all accounts...', 'info');
-      await refreshAll();
-      showToast('All accounts refreshed', 'success');
+      showToast('Hard syncing all accounts...', 'info');
+      const result = await hardSync(true);
+      if (result?.skipped) {
+        showToast('Already synced today. Showing cached data.', 'info');
+      } else {
+        showToast('All accounts synced', 'success');
+      }
     } catch {
       showToast('Some accounts failed to sync', 'error');
     } finally {
       syncingRef.current = false;
     }
-  }, [refreshAll, showToast]);
+  }, [hardSync, showToast]);
 
   useEffect(() => {
     if (!loading && accounts.length === 0 && !autoSyncAttempted.current) {
@@ -192,9 +196,9 @@ function AnalyticsContent() {
             <Link2 className={`mr-1.5 h-3.5 w-3.5 ${autoSyncing ? 'animate-spin' : ''}`} />
             {autoSyncing ? 'Importing...' : 'Sync from Connections'}
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleRefreshAll} disabled={syncing || autoSyncing}>
-            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Syncing...' : 'Refresh All'}
+          <Button variant="ghost" size="sm" onClick={handleHardSync} disabled={syncing || autoSyncing}>
+            <HardDriveDownload className={`mr-1.5 h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Syncing...' : 'Hard Sync'}
           </Button>
           <Button size="sm" onClick={() => setAddModalOpen(true)}>
             <Plus className="mr-1.5 h-3.5 w-3.5" />

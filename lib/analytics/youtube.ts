@@ -57,25 +57,23 @@ type YouTubeVideo = {
   comments: number;
 };
 
-export async function fetchYouTubeVideos(channelId: string, maxVideos = 50, knownIds?: Set<string>): Promise<YouTubeVideo[]> {
+export async function fetchYouTubeVideos(channelId: string, maxVideos = 120): Promise<YouTubeVideo[]> {
   // Get uploads playlist
   const channelData = await ytGet(`/channels?part=contentDetails&id=${channelId}`);
   const uploadsPlaylistId = channelData?.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
   if (!uploadsPlaylistId) return [];
 
-  // Get playlist items (paginated), stop if we hit known videos
+  // Get all playlist items (paginated)
   const videoIds: string[] = [];
   let pageToken = '';
-  let hitKnown = false;
 
-  while (videoIds.length < maxVideos && !hitKnown) {
+  while (videoIds.length < maxVideos) {
     const pageParam = pageToken ? `&pageToken=${pageToken}` : '';
     const plData = await ytGet(`/playlistItems?part=contentDetails&playlistId=${uploadsPlaylistId}&maxResults=50${pageParam}`);
     const items = plData?.items || [];
     for (const item of items) {
       const vid = item?.contentDetails?.videoId;
       if (!vid) continue;
-      if (knownIds?.has(vid)) { hitKnown = true; break; }
       videoIds.push(vid);
     }
     pageToken = plData?.nextPageToken || '';
