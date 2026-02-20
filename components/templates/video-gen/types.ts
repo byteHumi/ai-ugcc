@@ -29,6 +29,8 @@ export type CachedStepState = {
   masterAutoExtracted: boolean;
 };
 
+export type MasterPerModelActivePanel = 'upload' | 'model-images' | null;
+
 export const VEO_DURATIONS = ['4s', '6s', '8s'];
 
 export const VEO_ASPECTS = [

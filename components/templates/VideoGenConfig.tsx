@@ -13,7 +13,8 @@ import { extractFramesFromVideo, fetchGeneratedImages, generateFirstFrameRequest
 import { generateAllMasterFirstFrames, resolveModelImageDisplay, resolveModelImageUrl } from './video-gen/helpers';
 import type { GeneratedImage, VideoGenConfig as VGC } from '@/types';
 import type { MasterModel } from './NodeConfigPanel';
-import type { ExtractedFrame, FirstFrameInputMode, FirstFrameOption, ImageSource } from './video-gen/types';
+import type { ExtractedFrame, FirstFrameInputMode, FirstFrameOption, ImageSource, MasterPerModelActivePanel } from './video-gen/types';
+import type { ModelImage } from '@/types';
 
 export default function VideoGenConfig({
   config,
@@ -78,6 +79,10 @@ export default function VideoGenConfig({
   const [isMasterGeneratingAll, setIsMasterGeneratingAll] = useState(false);
   const [masterProgress, setMasterProgress] = useState({ done: 0, total: 0 });
   const [masterAutoExtracted, setMasterAutoExtracted] = useState(() => cached?.masterAutoExtracted ?? false);
+  const [masterActivePanelByModel, setMasterActivePanelByModel] = useState<Record<string, MasterPerModelActivePanel>>({});
+  const [masterModelImages, setMasterModelImages] = useState<Record<string, ModelImage[]>>({});
+  const [masterModelImagesLoading, setMasterModelImagesLoading] = useState<Set<string>>(new Set());
+  const [masterUploadingModelId, setMasterUploadingModelId] = useState<string | null>(null);
 
   const clearFirstFrameOptions = () => { setFirstFrameOptionsRaw([]); setDismissedOptions(new Set()); };
   const setFirstFrameOptions = (options: FirstFrameOption[]) => { setFirstFrameOptionsRaw(options); setDismissedOptions(new Set()); };
@@ -317,6 +322,7 @@ export default function VideoGenConfig({
   const handleMasterBrowseLibrary = async (modelId: string) => {
     if (masterLibraryModelId === modelId) { setMasterLibraryModelId(null); return; }
 
+    setMasterActivePanelByModel((prev) => ({ ...prev, [modelId]: null }));
     setMasterLibraryModelId(modelId);
     setIsLoadingMasterLibrary(true);
     try {
@@ -326,6 +332,47 @@ export default function VideoGenConfig({
       // no-op
     } finally {
       setIsLoadingMasterLibrary(false);
+    }
+  };
+
+  const handleMasterTogglePanel = (modelId: string, panel: 'upload' | 'model-images') => {
+    setMasterActivePanelByModel((prev) => ({
+      ...prev,
+      [modelId]: prev[modelId] === panel ? null : panel,
+    }));
+    if (masterLibraryModelId === modelId) setMasterLibraryModelId(null);
+  };
+
+  const handleMasterUploadForModel = async (modelId: string, file: File) => {
+    setMasterUploadingModelId(modelId);
+    try {
+      const data = await uploadImageFile(file);
+      if (data.success) {
+        const gcsUrl = data.gcsUrl || data.url || data.path;
+        if (gcsUrl) {
+          handleMasterSelectForModel(modelId, gcsUrl);
+          setMasterActivePanelByModel((prev) => ({ ...prev, [modelId]: null }));
+        }
+      }
+    } catch {
+      // no-op
+    } finally {
+      setMasterUploadingModelId(null);
+    }
+  };
+
+  const handleMasterFetchModelImages = async (modelId: string) => {
+    if (masterModelImages[modelId]) return;
+    setMasterModelImagesLoading((prev) => new Set(prev).add(modelId));
+    try {
+      const res = await fetch(`/api/models/${modelId}/images`);
+      const data = await res.json();
+      const images: ModelImage[] = Array.isArray(data) ? data : [];
+      setMasterModelImages((prev) => ({ ...prev, [modelId]: images }));
+    } catch {
+      // no-op
+    } finally {
+      setMasterModelImagesLoading((prev) => { const next = new Set(prev); next.delete(modelId); return next; });
     }
   };
 
@@ -428,17 +475,25 @@ export default function VideoGenConfig({
       masterMode={masterMode}
       masterModels={masterModels}
       config={config}
+      isExpanded={isExpanded}
       masterPerModelResults={masterPerModelResults}
       masterGeneratingIds={masterGeneratingIds}
       masterLibraryModelId={masterLibraryModelId}
       masterLibraryImages={masterLibraryImages}
       isLoadingMasterLibrary={isLoadingMasterLibrary}
       isMasterGeneratingAll={isMasterGeneratingAll}
+      masterActivePanelByModel={masterActivePanelByModel}
+      masterModelImages={masterModelImages}
+      masterModelImagesLoading={masterModelImagesLoading}
+      masterUploadingModelId={masterUploadingModelId}
       setPreviewUrl={setPreviewUrl}
       setMasterLibraryModelId={setMasterLibraryModelId}
       masterGenerateForModel={masterGenerateForModel}
       handleMasterBrowseLibrary={handleMasterBrowseLibrary}
       handleMasterSelectForModel={handleMasterSelectForModel}
+      handleMasterTogglePanel={handleMasterTogglePanel}
+      handleMasterUploadForModel={handleMasterUploadForModel}
+      handleMasterFetchModelImages={handleMasterFetchModelImages}
     />
   );
 
