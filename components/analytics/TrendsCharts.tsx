@@ -589,7 +589,7 @@ export default function TrendsCharts({
             </div>
           ) : (() => {
             const src = contentData.length > 0 ? contentData : breakdown;
-            const totalVideos = src.reduce((s, p) => s + (p.videoCount || 0), 0);
+            const totalVideos = src.reduce((s, p) => s + ((p as PlatformData).videoCount || 0), 0);
             const totalViews = src.reduce((s, p) => s + p.views, 0);
             const totalLikes = src.reduce((s, p) => s + p.likes, 0);
             const totalComments = src.reduce((s, p) => s + p.comments, 0);
