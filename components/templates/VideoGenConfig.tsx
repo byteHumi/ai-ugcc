@@ -542,6 +542,8 @@ export default function VideoGenConfig({
           handleDrop={handleDrop}
           handleExtractFrames={handleExtractFrames}
           handleMasterGenerateAll={handleMasterGenerateAll}
+          handleSceneUpload={handleSceneUpload}
+          isUploadingScene={isUploadingScene}
         />
       </div>
 

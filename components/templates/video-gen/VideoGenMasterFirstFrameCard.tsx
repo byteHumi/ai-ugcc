@@ -1,4 +1,4 @@
-import { Check, Sparkles, X } from 'lucide-react';
+import { Check, Sparkles, Upload, X } from 'lucide-react';
 import type { VideoGenConfig as VGC } from '@/types';
 import type { MasterModel } from '@/components/templates/NodeConfigPanel';
 import type { ExtractedFrame, FirstFrameOption } from './types';
@@ -17,11 +17,13 @@ type Props = {
   masterProgress: { done: number; total: number };
   masterPerModelResults: Record<string, FirstFrameOption[]>;
   masterPerModelContent: React.ReactNode;
+  isUploadingScene: boolean;
   setShowScenePicker: (value: boolean) => void;
   setPreviewUrl: (url: string | null) => void;
   setMasterPerModelResults: (value: Record<string, FirstFrameOption[]>) => void;
   handleExtractFrames: () => Promise<void>;
   handleMasterGenerateAll: () => Promise<void>;
+  handleSceneUpload: (file: File) => Promise<void>;
 };
 
 export default function VideoGenMasterFirstFrameCard({
@@ -38,11 +40,13 @@ export default function VideoGenMasterFirstFrameCard({
   masterProgress,
   masterPerModelResults,
   masterPerModelContent,
+  isUploadingScene,
   setShowScenePicker,
   setPreviewUrl,
   setMasterPerModelResults,
   handleExtractFrames,
   handleMasterGenerateAll,
+  handleSceneUpload,
 }: Props) {
   return (
     <div className="rounded-2xl overflow-hidden bg-gradient-to-b from-master-light to-[var(--background)] dark:from-master-light dark:to-[var(--background)]">
@@ -150,18 +154,80 @@ export default function VideoGenMasterFirstFrameCard({
                           </button>
                         );
                       })}
+                      {isUploadingScene ? (
+                        <div className="flex flex-col items-center justify-center aspect-square rounded-lg border-2 border-dashed border-[var(--border)]">
+                          <span className="h-4 w-4 rounded-full border-2 border-[var(--text-muted)]/30 border-t-master animate-spin" />
+                        </div>
+                      ) : (
+                        <label
+                          className="flex flex-col items-center justify-center gap-1 aspect-square rounded-lg border-2 border-dashed border-[var(--border)] cursor-pointer hover:border-master/50 hover:bg-master/5 transition-colors"
+                          onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('!border-master/50', '!bg-master/5'); }}
+                          onDragLeave={(e) => { e.currentTarget.classList.remove('!border-master/50', '!bg-master/5'); }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.classList.remove('!border-master/50', '!bg-master/5');
+                            const file = e.dataTransfer.files?.[0];
+                            if (file && file.type.startsWith('image/')) handleSceneUpload(file);
+                          }}
+                        >
+                          <Upload className="h-4 w-4 text-[var(--text-muted)]" />
+                          <span className="text-[7px] text-[var(--text-muted)] text-center leading-tight">Upload</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleSceneUpload(file);
+                              e.target.value = '';
+                            }}
+                          />
+                        </label>
+                      )}
                     </div>
                     <button onClick={handleExtractFrames} disabled={isExtracting} className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text)]">
                       Re-extract
                     </button>
                   </>
                 ) : (
-                  <button
-                    onClick={handleExtractFrames}
-                    className="w-full rounded-lg bg-master-light px-3 py-2 text-xs font-medium text-master hover:bg-master-light/80 transition-colors"
-                  >
-                    Extract frames from video
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={handleExtractFrames}
+                      className="rounded-lg bg-master-light px-3 py-3 text-xs font-medium text-master hover:bg-master-light/80 transition-colors"
+                    >
+                      Extract frames
+                    </button>
+                    {isUploadingScene ? (
+                      <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-[var(--border)] py-3">
+                        <span className="h-4 w-4 rounded-full border-2 border-[var(--text-muted)]/30 border-t-master animate-spin" />
+                      </div>
+                    ) : (
+                      <label
+                        className="flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-[var(--border)] py-3 cursor-pointer hover:border-master/50 hover:bg-master/5 transition-colors"
+                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('!border-master/50', '!bg-master/5'); }}
+                        onDragLeave={(e) => { e.currentTarget.classList.remove('!border-master/50', '!bg-master/5'); }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('!border-master/50', '!bg-master/5');
+                          const file = e.dataTransfer.files?.[0];
+                          if (file && file.type.startsWith('image/')) handleSceneUpload(file);
+                        }}
+                      >
+                        <Upload className="h-4 w-4 text-[var(--text-muted)]" />
+                        <span className="text-[10px] text-[var(--text-muted)]">Upload image</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleSceneUpload(file);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
                 )}
               </div>
             )}

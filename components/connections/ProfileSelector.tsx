@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import type { Profile, Account } from '@/types';
 import { useToast } from '@/hooks/useToast';
 import { copyToClipboard } from '@/lib/dateUtils';
-import { ChevronDown, Pencil, Trash2, Copy, Check, UserRound } from 'lucide-react';
+import { ChevronDown, Pencil, Trash2, Copy, Check, UserRound, Search } from 'lucide-react';
 import { getProfileInitials, getProfileAvatarClassFromProfile } from './profileAvatar';
 import GlBadge from '@/components/ui/GlBadge';
 
@@ -39,6 +39,7 @@ export default function ProfileSelector({
 }) {
   const { showToast } = useToast();
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -105,7 +106,7 @@ export default function ProfileSelector({
       </div>
 
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { setOpen((v) => !v); setSearch(''); }}
         className="mt-3 flex w-full items-center justify-between rounded-xl bg-[var(--background)] px-3 py-3 text-left transition-colors hover:bg-[var(--accent)]"
       >
         <div className="min-w-0 flex items-center gap-3">
@@ -138,8 +139,38 @@ export default function ProfileSelector({
 
       {open && (
         <div className="mt-2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)]">
+          {profiles.length > 3 && (
+            <div className="border-b border-[var(--border)] px-3 py-2">
+              <div className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-2.5 py-1.5">
+                <Search className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search profiles..."
+                  className="w-full bg-transparent text-xs text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
+                  autoFocus
+                />
+              </div>
+            </div>
+          )}
           <div className="max-h-72 overflow-auto p-1">
-            {profiles.map((profile) => {
+            {profiles.filter((p) => {
+              const q = search.trim().toLowerCase();
+              if (!q) return true;
+              return (
+                p.name.toLowerCase().includes(q) ||
+                (p.description || '').toLowerCase().includes(q) ||
+                accounts.some((a) => {
+                  const pId = typeof a.profileId === 'object' ? (a.profileId as { _id: string })?._id : a.profileId;
+                  return pId === p._id && (
+                    (a.username || '').toLowerCase().includes(q) ||
+                    (a.displayName || '').toLowerCase().includes(q) ||
+                    a.platform.toLowerCase().includes(q)
+                  );
+                })
+              );
+            }).map((profile) => {
               const active = currentProfile?._id === profile._id;
               const accountImage = getProfileImage(profile._id, accounts);
               return (

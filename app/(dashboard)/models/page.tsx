@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Plus, RefreshCw, Search } from 'lucide-react';
 import type { Model } from '@/types';
 import { useModels } from '@/hooks/useModels';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,16 @@ export default function ModelsPage() {
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [newModelModal, setNewModelModal] = useState(false);
   const [modelDetailModal, setModelDetailModal] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filteredModels = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter((m) =>
+      m.name.toLowerCase().includes(q) ||
+      (m.linkedPlatforms || []).some((p) => p.toLowerCase().includes(q))
+    );
+  }, [models, search]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -44,8 +54,21 @@ export default function ModelsPage() {
         </div>
       </div>
 
+      {models.length > 0 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by model name or platform..."
+            className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] py-2.5 pl-10 pr-3 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--primary)]/50 focus:outline-none focus:ring-1 focus:ring-[var(--primary)]/20"
+          />
+        </div>
+      )}
+
       <ModelGrid
-        models={models}
+        models={filteredModels}
         isLoading={isLoadingPage}
         onModelClick={(model) => {
           setSelectedModel(model);

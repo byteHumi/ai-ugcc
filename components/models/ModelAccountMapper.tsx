@@ -8,6 +8,20 @@ import { FaTiktok, FaInstagram, FaYoutube, FaFacebook, FaXTwitter, FaLinkedin } 
 import type { ModelAccountMapping, Account } from '@/types';
 import GlBadge from '@/components/ui/GlBadge';
 
+function getProfileUrl(platform: string, username?: string | null): string | null {
+  if (!username) return null;
+  const handle = username.replace(/^@/, '');
+  switch (platform) {
+    case 'tiktok': return `https://www.tiktok.com/@${handle}`;
+    case 'instagram': return `https://www.instagram.com/${handle}`;
+    case 'youtube': return `https://www.youtube.com/@${handle}`;
+    case 'facebook': return `https://www.facebook.com/${handle}`;
+    case 'twitter': return `https://x.com/${handle}`;
+    case 'linkedin': return `https://www.linkedin.com/in/${handle}`;
+    default: return null;
+  }
+}
+
 const PLATFORM_META: Record<string, { label: string; icon: ReactNode; color: string; bg: string }> = {
   tiktok:    { label: 'TikTok',    icon: <FaTiktok className="h-3.5 w-3.5" />,    color: '#00f2ea', bg: 'bg-[#00f2ea]/10' },
   instagram: { label: 'Instagram', icon: <FaInstagram className="h-3.5 w-3.5" />, color: '#E1306C', bg: 'bg-[#E1306C]/10' },
@@ -125,26 +139,43 @@ export default function ModelAccountMapper({
             const account = getAccountInfo(mapping.lateAccountId);
             const meta = PLATFORM_META[mapping.platform];
             return (
-              <div
-                key={mapping.id}
-                className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2"
-              >
-                <PlatformIcon platform={mapping.platform} size="md" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 truncate text-sm font-medium">
-                    {account?.username || account?.displayName || mapping.lateAccountId}
-                    <GlBadge index={account?.apiKeyIndex} />
+              (() => {
+                const displayName = account?.username || account?.displayName || mapping.lateAccountId;
+                const profileUrl = getProfileUrl(mapping.platform, account?.username);
+                return (
+                  <div
+                    key={mapping.id}
+                    className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2"
+                  >
+                    <PlatformIcon platform={mapping.platform} size="md" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 truncate text-sm font-medium">
+                        {displayName}
+                        <GlBadge index={account?.apiKeyIndex} />
+                      </div>
+                      <div className="text-[10px] text-[var(--text-muted)]">{meta?.label || mapping.platform}</div>
+                    </div>
+                    {profileUrl && (
+                      <a
+                        href={profileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 rounded p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--text)]"
+                        title={`Open ${meta?.label || mapping.platform} profile`}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                    <button
+                      onClick={() => handleRemove(mapping.lateAccountId)}
+                      disabled={isSaving}
+                      className="shrink-0 rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50 dark:hover:bg-red-950/30"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
                   </div>
-                  <div className="text-[10px] text-[var(--text-muted)]">{meta?.label || mapping.platform}</div>
-                </div>
-                <button
-                  onClick={() => handleRemove(mapping.lateAccountId)}
-                  disabled={isSaving}
-                  className="shrink-0 rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50 dark:hover:bg-red-950/30"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
+                );
+              })()
             );
           })}
         </div>

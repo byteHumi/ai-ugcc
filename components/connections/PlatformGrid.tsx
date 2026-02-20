@@ -9,6 +9,20 @@ import { FaTiktok, FaInstagram, FaYoutube, FaFacebook, FaXTwitter, FaLinkedin } 
 import Spinner from '@/components/ui/Spinner';
 import GlBadge from '@/components/ui/GlBadge';
 
+function getProfileUrl(platform: string, username?: string | null): string | null {
+  if (!username) return null;
+  const handle = username.replace(/^@/, '');
+  switch (platform) {
+    case 'tiktok': return `https://www.tiktok.com/@${handle}`;
+    case 'instagram': return `https://www.instagram.com/${handle}`;
+    case 'youtube': return `https://www.youtube.com/@${handle}`;
+    case 'facebook': return `https://www.facebook.com/${handle}`;
+    case 'twitter': return `https://x.com/${handle}`;
+    case 'linkedin': return `https://www.linkedin.com/in/${handle}`;
+    default: return null;
+  }
+}
+
 const PLATFORMS: { id: string; label: string; icon: ReactNode; color: string }[] = [
   { id: 'tiktok', label: 'TikTok', icon: <FaTiktok className="h-5 w-5" />, color: '#00f2ea' },
   { id: 'instagram', label: 'Instagram', icon: <FaInstagram className="h-5 w-5" />, color: '#E1306C' },
@@ -141,13 +155,26 @@ export default function PlatformGrid({
                           </p>
                         )}
                       </div>
-                      <button
-                        onClick={() => copyToClipboard(account._id, showToast)}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--text)]"
-                        title="Copy account ID"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </button>
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        {getProfileUrl(id, account.username) && (
+                          <a
+                            href={getProfileUrl(id, account.username)!}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--text)]"
+                            title={`Open ${label} profile`}
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                        <button
+                          onClick={() => copyToClipboard(account._id, showToast)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--text)]"
+                          title="Copy account ID"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </button>
+                      </div>
                     </div>
                   </div>
 

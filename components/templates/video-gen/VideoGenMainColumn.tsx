@@ -42,6 +42,8 @@ type Props = {
   handleDrop: (e: React.DragEvent) => void;
   handleExtractFrames: () => Promise<void>;
   handleMasterGenerateAll: () => Promise<void>;
+  handleSceneUpload: (file: File) => Promise<void>;
+  isUploadingScene: boolean;
 };
 
 export default function VideoGenMainColumn({
@@ -80,6 +82,8 @@ export default function VideoGenMainColumn({
   handleDrop,
   handleExtractFrames,
   handleMasterGenerateAll,
+  handleSceneUpload,
+  isUploadingScene,
 }: Props) {
   const isMotion = config.mode === 'motion-control';
   const isSubtle = config.mode === 'subtle-animation';
@@ -124,11 +128,13 @@ export default function VideoGenMainColumn({
           masterProgress={masterProgress}
           masterPerModelResults={masterPerModelResults}
           masterPerModelContent={masterPerModelContent}
+          isUploadingScene={isUploadingScene}
           setShowScenePicker={setShowScenePicker}
           setPreviewUrl={setPreviewUrl}
           setMasterPerModelResults={setMasterPerModelResults}
           handleExtractFrames={handleExtractFrames}
           handleMasterGenerateAll={handleMasterGenerateAll}
+          handleSceneUpload={handleSceneUpload}
         />
       ) : (
         <div>
