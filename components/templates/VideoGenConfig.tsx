@@ -292,11 +292,20 @@ export default function VideoGenConfig({
   const handleMasterGenerateAll = async () => {
     if (!masterModels || !config.extractedFrameUrl) return;
     setIsMasterGeneratingAll(true);
+    setMasterGeneratingIds(new Set(masterModels.map((m) => m.modelId)));
     await generateAllMasterFirstFrames({
       masterModels,
       generateForModel: masterGenerateForModel,
+      onModelResult: (modelId, images) => {
+        setMasterPerModelResults((prev) => ({ ...prev, [modelId]: images }));
+        setMasterGeneratingIds((prev) => { const next = new Set(prev); next.delete(modelId); return next; });
+      },
       onProgress: (done, total) => setMasterProgress({ done, total }),
+      frameImageUrl: config.extractedFrameUrl,
+      resolution: config.firstFrameResolution || '1K',
+      provider: config.firstFrameProvider || 'gemini',
     });
+    setMasterGeneratingIds(new Set());
     setIsMasterGeneratingAll(false);
   };
 

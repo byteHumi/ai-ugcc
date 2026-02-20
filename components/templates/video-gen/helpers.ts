@@ -40,13 +40,52 @@ export function resolveModelImageUrl(params: {
 export async function generateAllMasterFirstFrames(params: {
   masterModels: MasterModel[];
   generateForModel: (modelId: string, primaryGcsUrl: string) => Promise<FirstFrameOption[] | null>;
+  onModelResult?: (modelId: string, images: FirstFrameOption[]) => void;
   onProgress: (done: number, total: number) => void;
+  frameImageUrl?: string;
+  resolution?: string;
+  provider?: string;
 }) {
-  const { masterModels, generateForModel, onProgress } = params;
+  const { masterModels, generateForModel, onModelResult, onProgress, frameImageUrl, resolution, provider } = params;
   const total = masterModels.length;
-  let done = 0;
   onProgress(0, total);
 
+  // Try batch endpoint — single HTTP request, all models processed server-side in parallel
+  if (frameImageUrl && onModelResult) {
+    try {
+      const res = await fetch('/api/generate-first-frame/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          models: masterModels.map((m) => ({ modelImageUrl: m.primaryGcsUrl, modelId: m.modelId })),
+          frameImageUrl,
+          resolution: resolution || '1K',
+          provider: provider || 'gemini',
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const results: { modelId?: string; images: FirstFrameOption[]; error?: string }[] = data.results || [];
+
+        let done = 0;
+        for (const result of results) {
+          if (result.modelId && result.images.length > 0) {
+            onModelResult(result.modelId, result.images);
+          }
+          done += 1;
+          onProgress(Math.min(done, total), total);
+        }
+        return;
+      }
+      console.warn('[FirstFrame] Batch endpoint failed, falling back to individual requests');
+    } catch (err) {
+      console.warn('[FirstFrame] Batch endpoint error, falling back:', (err as Error).message);
+    }
+  }
+
+  // Fallback: fire all individual requests in parallel (browser limits to ~6 concurrent)
+  let done = 0;
   const promises = masterModels.map((model) =>
     generateForModel(model.modelId, model.primaryGcsUrl).then(() => {
       done += 1;

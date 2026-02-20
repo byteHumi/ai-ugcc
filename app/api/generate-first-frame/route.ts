@@ -7,30 +7,24 @@ import { uploadImage, getSignedUrlFromPublicUrl, downloadToBuffer } from '@/lib/
 import { initDatabase, createGeneratedImage } from '@/lib/db';
 import { auth } from '@/lib/auth';
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
-// Prompt A: Strict face-swap — describe images by content, not position numbers.
+// Prompt A: Place the portrait person into the scene — creative direction style.
 const PROMPT_A =
-  'FACE SWAP task. There are two reference images: one is a close-up portrait/headshot of a person, ' +
-  'and the other is a full scene showing a body pose and background environment. ' +
-  'Take the EXACT person from the portrait/headshot — their precise face, gender, age, ethnicity, skin tone, hair color, hair style, and every facial feature — ' +
-  'and place them into the scene/environment from the other image. ' +
-  'The person in the output MUST be identical and recognizable as the person from the portrait. ' +
-  'Keep the pose, camera angle, lighting, and background from the scene image. ' +
-  'Do NOT invent a new face. Do NOT blend or average the faces. The portrait face is the ONLY identity to use. ' +
-  'Photorealistic output, consistent lighting, natural skin texture.';
+  'I have two reference photos. The first is a portrait of a specific person. The second is a scene with a background and body pose. ' +
+  'Generate a new photorealistic image showing the person from the portrait photo placed naturally into the scene from the second photo. ' +
+  'The person in the output must look exactly like the portrait — same appearance, hair, and features. ' +
+  'Use the pose, camera angle, lighting, and environment from the scene photo. ' +
+  'The result should look like a natural photograph with consistent lighting and realistic skin texture.';
 
-// Prompt B: Same face-swap intent but removes any text/watermarks from the scene image.
+// Prompt B: Same intent, also removes text/watermarks.
 const PROMPT_B =
-  'Replace the person in the scene/background image with the person from the portrait/headshot image. ' +
-  'The portrait provides the ONLY face identity to use: copy every facial feature, gender, age, ethnicity, skin color, and hairstyle exactly. ' +
-  'The scene/background image provides ONLY the environment, body position, camera angle, and clothing style. ' +
-  'CRITICAL: The output must look like a real photograph of the portrait person standing in the scene location. ' +
-  'Do NOT create a different person. Do NOT change the gender or facial features from the portrait. ' +
-  'Do NOT use any facial features from the scene image. ' +
-  'IMPORTANT: If the scene/background image contains any text, captions, watermarks, logos, subtitles, or written words overlaid on it, ' +
-  'do NOT reproduce that text in the output. Remove all text overlays and render a clean image without any written text. ' +
-  'Preserve photorealistic quality with natural lighting and skin detail.';
+  'Using the two reference images provided: generate a photorealistic composite image. ' +
+  'The first image is a portrait showing a person\'s appearance. The second image shows a scene with a specific pose and background. ' +
+  'Create a new image of the portrait person in the scene environment, matching the pose and camera angle from the scene photo. ' +
+  'The person must retain their exact appearance from the portrait. ' +
+  'Remove any text, captions, watermarks, or logos that appear in the scene image — the output should be a clean photograph. ' +
+  'Ensure natural lighting, realistic details, and photographic quality.';
 
 
 // Detect actual image content type from buffer magic bytes
@@ -66,59 +60,141 @@ async function fetchWithRetry(url: string, retries = 3): Promise<ArrayBuffer> {
   throw new Error('fetch failed after retries');
 }
 
+// Resize & normalize image to JPEG ≤1024px for Gemini input
+async function prepareImageForGemini(buf: Buffer): Promise<{ b64: string; mime: string }> {
+  const resized = await sharp(buf)
+    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+  return { b64: resized.toString('base64'), mime: 'image/jpeg' };
+}
+
 // --- Gemini generation path ---
 async function generateWithGemini(
   modelBuf: Buffer,
   frameBuf: Buffer,
-  modelType: { contentType: string; ext: string },
-  frameType: { contentType: string; ext: string },
   prompt: string,
 ): Promise<Buffer> {
   const ai = new GoogleGenAI({ apiKey: config.GEMINI_API_KEY! });
 
-  const modelB64 = modelBuf.toString('base64');
-  const frameB64 = frameBuf.toString('base64');
+  const [modelImg, frameImg] = await Promise.all([
+    prepareImageForGemini(modelBuf),
+    prepareImageForGemini(frameBuf),
+  ]);
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-image-preview',
     contents: [
       { text: prompt },
-      {
-        inlineData: {
-          mimeType: modelType.contentType,
-          data: modelB64,
-        },
-      },
-      {
-        inlineData: {
-          mimeType: frameType.contentType,
-          data: frameB64,
-        },
-      },
+      { inlineData: { mimeType: modelImg.mime, data: modelImg.b64 } },
+      { inlineData: { mimeType: frameImg.mime, data: frameImg.b64 } },
     ],
     config: {
       responseModalities: ['TEXT', 'IMAGE'],
-    },
+      personGeneration: 'ALLOW_ALL',
+    } as Parameters<typeof ai.models.generateContent>[0]['config'],
   });
 
-  // Extract the generated image from response
-  const parts = response.candidates?.[0]?.content?.parts;
-  if (!parts) {
-    throw new Error('Gemini returned no content parts');
-  }
+  const candidate = response.candidates?.[0];
+  const finishReason = candidate?.finishReason;
+  const parts = candidate?.content?.parts;
 
-  for (const part of parts) {
-    if (part.inlineData?.data) {
-      return Buffer.from(part.inlineData.data, 'base64');
+  console.log(`[FirstFrame] Gemini response — finishReason: ${finishReason}, parts: ${parts?.length ?? 0}`);
+
+  if (parts && parts.length > 0) {
+    for (const part of parts) {
+      if (part.inlineData?.data) {
+        return Buffer.from(part.inlineData.data, 'base64');
+      }
     }
   }
 
-  throw new Error('Gemini response contained no image data');
+  throw new Error(`Gemini returned no image (finishReason: ${finishReason})`);
+}
+
+// Generate a single variant, returning null on failure
+async function generateVariant(
+  provider: string,
+  prompt: string,
+  label: string,
+  modelBuf: Buffer,
+  frameBuf: Buffer,
+  resolution: string,
+  falImageUrls?: string[],
+): Promise<Buffer | null> {
+  try {
+    if (provider === 'gemini') {
+      return await generateWithGemini(modelBuf, frameBuf, prompt);
+    } else if (provider === 'gpt-image') {
+      const result = await fal.subscribe('fal-ai/gpt-image-1.5/edit', {
+        input: {
+          image_urls: falImageUrls!,
+          prompt,
+          image_size: 'auto' as const,
+          quality: 'high' as const,
+          input_fidelity: 'high' as const,
+          num_images: 1,
+          output_format: 'png' as const,
+        },
+        logs: true,
+      });
+      const url = result.data?.images?.[0]?.url;
+      if (!url) throw new Error(`No image URL returned for variant ${label}`);
+      return Buffer.from(await fetchWithRetry(url));
+    } else {
+      const result = await fal.subscribe('fal-ai/nano-banana-pro/edit', {
+        input: {
+          image_urls: falImageUrls!,
+          prompt,
+          limit_generations: true,
+          resolution: resolution || '1K',
+          safety_tolerance: 6,
+        } as Parameters<typeof fal.subscribe<'fal-ai/nano-banana-pro/edit'>>[1]['input'],
+        logs: true,
+      });
+      const url = result.data?.images?.[0]?.url;
+      if (!url) throw new Error(`No image URL returned for variant ${label}`);
+      return Buffer.from(await fetchWithRetry(url));
+    }
+  } catch (err) {
+    console.error(`[FirstFrame] Variant ${label} failed:`, (err as Error).message);
+    return null;
+  }
+}
+
+// Process a single successful buffer: compress, upload, persist to DB, return result
+async function processResult(
+  buf: Buffer,
+  variant: string,
+  modelImageUrl: string,
+  frameImageUrl: string,
+  modelId: string | null,
+  createdBy: string | null,
+): Promise<{ url: string; gcsUrl: string }> {
+  const compressed = await sharp(buf).jpeg({ quality: 85 }).toBuffer();
+  const uploaded = await uploadImage(compressed, `first-frame-${variant.toLowerCase()}-${Date.now()}.jpg`);
+  const signed = await getSignedUrlFromPublicUrl(uploaded.url);
+
+  try {
+    await createGeneratedImage({
+      gcsUrl: uploaded.url,
+      filename: uploaded.url.split('/').pop() || `first-frame-${variant.toLowerCase()}-${Date.now()}.jpg`,
+      modelImageUrl,
+      sceneImageUrl: frameImageUrl,
+      promptVariant: variant,
+      modelId: modelId || null,
+      createdBy,
+    });
+  } catch (dbErr) {
+    console.error(`Failed to persist generated image ${variant} to DB:`, dbErr);
+  }
+
+  return { url: signed, gcsUrl: uploaded.url };
 }
 
 export async function POST(req: Request) {
   try {
-    const { modelImageUrl, frameImageUrl, resolution, modelId, provider = 'gemini' } = await req.json();
+    const { modelImageUrl, frameImageUrl, resolution, modelId, provider = 'fal' } = await req.json();
 
     if (!modelImageUrl || !frameImageUrl) {
       return NextResponse.json(
@@ -170,216 +246,64 @@ export async function POST(req: Request) {
     const modelType = detectImageType(modelBuf);
     const frameType = detectImageType(frameBuf);
 
-    let bufferA: Buffer | ArrayBuffer;
-    let bufferB: Buffer | ArrayBuffer;
-
-    if (provider === 'gemini') {
-      // --- Gemini path ---
-      if (!config.GEMINI_API_KEY) {
-        return NextResponse.json(
-          { error: 'Gemini API key not configured' },
-          { status: 500 },
-        );
-      }
-
-      console.log('[FirstFrame] Calling Gemini gemini-3-pro-image-preview (2 variants)...');
-
-      const [geminiA, geminiB] = await Promise.all([
-        generateWithGemini(modelBuf, frameBuf, modelType, frameType, PROMPT_A),
-        generateWithGemini(modelBuf, frameBuf, modelType, frameType, PROMPT_B),
-      ]);
-
-      console.log('[FirstFrame] Gemini done, uploading results...');
-      bufferA = geminiA;
-      bufferB = geminiB;
-    } else if (provider === 'gpt-image') {
-      // --- GPT Image 1.5 path (via FAL) ---
+    // Upload to FAL CDN if using a FAL provider
+    let falImageUrls: string[] | undefined;
+    if (provider === 'fal' || provider === 'gpt-image') {
       if (!config.FAL_KEY) {
-        return NextResponse.json(
-          { error: 'FAL API key not configured' },
-          { status: 500 },
-        );
+        return NextResponse.json({ error: 'FAL API key not configured' }, { status: 500 });
       }
-
       fal.config({ credentials: config.FAL_KEY });
-
-      // Upload directly to FAL's CDN
       const [falModelUrl, falFrameUrl] = await Promise.all([
         fal.storage.upload(new Blob([new Uint8Array(modelBuf)], { type: modelType.contentType })),
         fal.storage.upload(new Blob([new Uint8Array(frameBuf)], { type: frameType.contentType })),
       ]);
-
-      const imageUrls = [falModelUrl, falFrameUrl];
-
+      falImageUrls = [falModelUrl, falFrameUrl];
       console.log('[FirstFrame] FAL URLs — model (face):', falModelUrl.slice(0, 60), '| scene:', falFrameUrl.slice(0, 60));
-      console.log('[FirstFrame] Calling gpt-image-1.5/edit (2 variants)...');
-
-      const [resultA, resultB] = await Promise.all([
-        fal.subscribe('fal-ai/gpt-image-1.5/edit', {
-          input: {
-            image_urls: imageUrls,
-            prompt: PROMPT_A,
-            image_size: 'auto' as const,
-            quality: 'high' as const,
-            input_fidelity: 'high' as const,
-            num_images: 1,
-            output_format: 'png' as const,
-          },
-          logs: true,
-        }),
-        fal.subscribe('fal-ai/gpt-image-1.5/edit', {
-          input: {
-            image_urls: imageUrls,
-            prompt: PROMPT_B,
-            image_size: 'auto' as const,
-            quality: 'high' as const,
-            input_fidelity: 'high' as const,
-            num_images: 1,
-            output_format: 'png' as const,
-          },
-          logs: true,
-        }),
-      ]);
-
-      console.log('[FirstFrame] gpt-image-1.5 done, downloading results...');
-
-      const gptImageUrlA = resultA.data?.images?.[0]?.url;
-      const gptImageUrlB = resultB.data?.images?.[0]?.url;
-
-      if (!gptImageUrlA || !gptImageUrlB) {
-        console.error('[FirstFrame] Missing result URLs:', {
-          A: JSON.stringify(resultA.data).slice(0, 200),
-          B: JSON.stringify(resultB.data).slice(0, 200),
-        });
-        throw new Error('No image URL returned from GPT Image 1.5');
-      }
-
-      console.log('[FirstFrame] Result URLs:', { A: gptImageUrlA.slice(0, 60), B: gptImageUrlB.slice(0, 60) });
-
-      [bufferA, bufferB] = await Promise.all([
-        fetchWithRetry(gptImageUrlA),
-        fetchWithRetry(gptImageUrlB),
-      ]);
-    } else {
-      // --- FAL path (Nano Banana) ---
-      if (!config.FAL_KEY) {
-        return NextResponse.json(
-          { error: 'FAL API key not configured' },
-          { status: 500 },
-        );
-      }
-
-      fal.config({ credentials: config.FAL_KEY });
-
-      // Upload directly to FAL's CDN
-      const [falModelUrl, falFrameUrl] = await Promise.all([
-        fal.storage.upload(new Blob([new Uint8Array(modelBuf)], { type: modelType.contentType })),
-        fal.storage.upload(new Blob([new Uint8Array(frameBuf)], { type: frameType.contentType })),
-      ]);
-
-      const imageUrls = [falModelUrl, falFrameUrl];
-
-      console.log('[FirstFrame] FAL URLs — model (face):', falModelUrl.slice(0, 60), '| scene:', falFrameUrl.slice(0, 60));
-      console.log('[FirstFrame] Calling nano-banana-pro/edit (2 variants)...');
-
-      const falResolution = resolution || '1K';
-
-      const [resultA, resultB] = await Promise.all([
-        fal.subscribe('fal-ai/nano-banana-pro/edit', {
-          input: {
-            image_urls: imageUrls,
-            prompt: PROMPT_A,
-            limit_generations: true,
-            resolution: falResolution,
-          },
-          logs: true,
-        }),
-        fal.subscribe('fal-ai/nano-banana-pro/edit', {
-          input: {
-            image_urls: imageUrls,
-            prompt: PROMPT_B,
-            limit_generations: true,
-            resolution: falResolution,
-          },
-          logs: true,
-        }),
-      ]);
-
-      console.log('[FirstFrame] nano-banana-pro done, downloading results...');
-
-      const falImageUrlA = resultA.data?.images?.[0]?.url;
-      const falImageUrlB = resultB.data?.images?.[0]?.url;
-
-      if (!falImageUrlA || !falImageUrlB) {
-        console.error('[FirstFrame] Missing result URLs:', {
-          A: JSON.stringify(resultA.data).slice(0, 200),
-          B: JSON.stringify(resultB.data).slice(0, 200),
-        });
-        throw new Error('No image URL returned from Nano Banana Pro');
-      }
-
-      console.log('[FirstFrame] Result URLs:', { A: falImageUrlA.slice(0, 60), B: falImageUrlB.slice(0, 60) });
-
-      [bufferA, bufferB] = await Promise.all([
-        fetchWithRetry(falImageUrlA),
-        fetchWithRetry(falImageUrlB),
-      ]);
+    } else if (provider === 'gemini' && !config.GEMINI_API_KEY) {
+      return NextResponse.json({ error: 'Gemini API key not configured' }, { status: 500 });
     }
 
-    // Compress to JPEG (reduces 4K image sizes that cause video gen failures downstream)
-    const [compressedA, compressedB] = await Promise.all([
-      sharp(Buffer.from(new Uint8Array(bufferA))).jpeg({ quality: 85 }).toBuffer(),
-      sharp(Buffer.from(new Uint8Array(bufferB))).jpeg({ quality: 85 }).toBuffer(),
+    console.log(`[FirstFrame] Generating 2 variants with ${provider}...`);
+
+    // Generate both variants — use allSettled so one failure doesn't kill the other
+    const [settledA, settledB] = await Promise.allSettled([
+      generateVariant(provider, PROMPT_A, 'A', modelBuf, frameBuf, resolution, falImageUrls),
+      generateVariant(provider, PROMPT_B, 'B', modelBuf, frameBuf, resolution, falImageUrls),
     ]);
 
-    console.log(`[FirstFrame] Compressed to JPEG — A: ${compressedA.length} bytes, B: ${compressedB.length} bytes`);
+    const bufA = settledA.status === 'fulfilled' ? settledA.value : null;
+    const bufB = settledB.status === 'fulfilled' ? settledB.value : null;
 
-    const [uploadedA, uploadedB] = await Promise.all([
-      uploadImage(compressedA, `first-frame-a-${Date.now()}.jpg`),
-      uploadImage(compressedB, `first-frame-b-${Date.now()}.jpg`),
-    ]);
-
-    const [signedA, signedB] = await Promise.all([
-      getSignedUrlFromPublicUrl(uploadedA.url),
-      getSignedUrlFromPublicUrl(uploadedB.url),
-    ]);
-
-    // Persist generated images to database
-    try {
-      await initDatabase();
-      const session = await auth();
-      const createdBy = session?.user?.name?.split(' ')[0] || null;
-      await Promise.all([
-        createGeneratedImage({
-          gcsUrl: uploadedA.url,
-          filename: uploadedA.url.split('/').pop() || `first-frame-a-${Date.now()}.jpg`,
-          modelImageUrl: modelImageUrl,
-          sceneImageUrl: frameImageUrl,
-          promptVariant: 'A',
-          modelId: modelId || null,
-          createdBy,
-        }),
-        createGeneratedImage({
-          gcsUrl: uploadedB.url,
-          filename: uploadedB.url.split('/').pop() || `first-frame-b-${Date.now()}.jpg`,
-          modelImageUrl: modelImageUrl,
-          sceneImageUrl: frameImageUrl,
-          promptVariant: 'B',
-          modelId: modelId || null,
-          createdBy,
-        }),
-      ]);
-    } catch (dbErr) {
-      console.error('Failed to persist generated images to DB:', dbErr);
-      // Don't fail the request — images are still returned to the client
+    if (!bufA && !bufB) {
+      throw new Error('Both variants failed to generate');
     }
 
-    return NextResponse.json({
-      images: [
-        { url: signedA, gcsUrl: uploadedA.url },
-        { url: signedB, gcsUrl: uploadedB.url },
-      ],
-    });
+    console.log(`[FirstFrame] Variants done — A: ${bufA ? 'ok' : 'failed'}, B: ${bufB ? 'ok' : 'failed'}`);
+
+    // Process successful results
+    await initDatabase();
+    const session = await auth();
+    const createdBy = session?.user?.name?.split(' ')[0] || null;
+
+    const images: { url: string; gcsUrl: string }[] = [];
+
+    const processPromises: Promise<void>[] = [];
+    if (bufA) {
+      processPromises.push(
+        processResult(bufA, 'A', modelImageUrl, frameImageUrl, modelId || null, createdBy)
+          .then((result) => { images.push(result); }),
+      );
+    }
+    if (bufB) {
+      processPromises.push(
+        processResult(bufB, 'B', modelImageUrl, frameImageUrl, modelId || null, createdBy)
+          .then((result) => { images.push(result); }),
+      );
+    }
+
+    await Promise.all(processPromises);
+
+    return NextResponse.json({ images });
   } catch (error: unknown) {
     console.error('Generate first frame error:', error);
     // Log full FAL validation error body for debugging
