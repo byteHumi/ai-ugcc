@@ -49,14 +49,14 @@ export default function MasterBatchVideoGrid({
 }: Props) {
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-[var(--text-muted)]">Videos ({jobs.length})</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {selectableJobs.length > 0 && (
             <button
               onClick={onApproveAll}
               disabled={posting}
-              className="flex items-center gap-1.5 rounded-lg bg-master px-3 py-1.5 text-xs font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 dark:text-master-foreground"
+              className="flex items-center gap-1.5 rounded-lg bg-master px-2.5 sm:px-3 py-1.5 text-[10px] sm:text-xs font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 dark:text-master-foreground"
             >
               {posting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
               Approve All ({selectableJobs.length})
@@ -65,16 +65,16 @@ export default function MasterBatchVideoGrid({
           {selectableJobs.length > 0 && (
             <button
               onClick={onToggleSelectAll}
-              className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)]"
+              className="flex items-center gap-1 text-[10px] sm:text-xs text-[var(--text-muted)] hover:text-[var(--text)]"
             >
               {allSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-              {allSelected ? 'Clear All' : 'Select All'}
+              {allSelected ? 'Clear' : 'Select All'}
             </button>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {jobs.map((job) => (
           <MasterJobCard
             key={job.id}

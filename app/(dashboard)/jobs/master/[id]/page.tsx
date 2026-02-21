@@ -491,7 +491,7 @@ export default function MasterBatchDetailPage() {
   const allSelected = selectableJobs.length > 0 && selectableJobs.every((j) => selectedJobIds.has(j.id));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 pb-20">
+    <div className="mx-auto max-w-6xl space-y-4 sm:space-y-6 px-3 sm:px-0 pb-20">
       <MasterBatchHeader
         batch={batch}
         masterConfig={masterConfig}

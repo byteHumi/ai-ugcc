@@ -18,12 +18,13 @@ const MASTER_DRAFT_KEY = 'ai-ugc-master-pipeline-draft';
 type MasterDraft = {
   steps: MiniAppStep[];
   name: string;
-  videoSource: 'tiktok' | 'upload';
+  videoSource: 'tiktok' | 'upload' | 'library';
   tiktokUrl: string;
   videoUrl: string;
   uploadedFilename: string;
   sourceDuration?: number;
   previewUrl?: string;
+  libraryVideos?: Record<string, string>;
 };
 
 function loadDraft(): MasterDraft | null {
@@ -46,8 +47,9 @@ export default function MasterPipelinePage() {
   // Pipeline state
   const [steps, setSteps] = useState<MiniAppStep[]>(() => draft.current?.steps ?? []);
   const [name] = useState(() => draft.current?.name ?? '');
-  const [videoSource, setVideoSource] = useState<'tiktok' | 'upload'>(() => draft.current?.videoSource ?? 'tiktok');
+  const [videoSource, setVideoSource] = useState<'tiktok' | 'upload' | 'library'>(() => draft.current?.videoSource ?? 'tiktok');
   const [tiktokUrl, setTiktokUrl] = useState(() => draft.current?.tiktokUrl ?? '');
+  const [libraryVideos, setLibraryVideos] = useState<Record<string, string>>(() => draft.current?.libraryVideos ?? {});
   const [videoUrl, setVideoUrl] = useState(() => draft.current?.videoUrl ?? '');
   const [uploadedFilename, setUploadedFilename] = useState(() => draft.current?.uploadedFilename ?? '');
   const [sourceDuration, setSourceDuration] = useState<number | undefined>(() => draft.current?.sourceDuration);
@@ -111,9 +113,21 @@ export default function MasterPipelinePage() {
 
   // Auto-save draft
   useEffect(() => {
-    const d: MasterDraft = { steps, name, videoSource, tiktokUrl, videoUrl, uploadedFilename, sourceDuration, previewUrl };
+    const d: MasterDraft = { steps, name, videoSource, tiktokUrl, videoUrl, uploadedFilename, sourceDuration, previewUrl, libraryVideos };
     try { sessionStorage.setItem(MASTER_DRAFT_KEY, JSON.stringify(d)); } catch {}
-  }, [steps, name, videoSource, tiktokUrl, videoUrl, uploadedFilename, sourceDuration, previewUrl]);
+  }, [steps, name, videoSource, tiktokUrl, videoUrl, uploadedFilename, sourceDuration, previewUrl, libraryVideos]);
+
+  // Prune libraryVideos when models are deselected
+  useEffect(() => {
+    setLibraryVideos((prev) => {
+      const pruned: Record<string, string> = {};
+      for (const id of selectedModelIds) {
+        if (prev[id]) pruned[id] = prev[id];
+      }
+      if (Object.keys(pruned).length !== Object.keys(prev).length) return pruned;
+      return prev;
+    });
+  }, [selectedModelIds]);
 
   // Resolve pasted URL
   useEffect(() => {
@@ -288,6 +302,14 @@ export default function MasterPipelinePage() {
         setSelectedNodeId('source');
         return;
       }
+      if (videoSource === 'library') {
+        const missing = selectedModelIds.filter((id) => !libraryVideos[id]);
+        if (missing.length > 0) {
+          showToast(`Select a video for all models (${missing.length} remaining)`, 'error');
+          setSelectedNodeId('source');
+          return;
+        }
+      }
     }
 
     // Validate non-image steps (image validation is skipped — models provide them)
@@ -331,6 +353,7 @@ export default function MasterPipelinePage() {
           videoSource,
           tiktokUrl: videoSource === 'tiktok' ? tiktokUrl : undefined,
           videoUrl: videoSource === 'upload' ? videoUrl : undefined,
+          libraryVideos: videoSource === 'library' ? libraryVideos : undefined,
           modelIds: selectedModelIds,
           caption: masterCaption,
           scheduledFor: publishMode === 'schedule' ? scheduledFor : undefined,
@@ -439,6 +462,10 @@ export default function MasterPipelinePage() {
                     onVideoUpload: (e) => handleVideoUpload(e),
                     onVideoRemove: () => { setVideoUrl(''); setPreviewUrl(''); setUploadedFilename(''); setSourceDuration(undefined); },
                     onFileDrop: handleVideoFile,
+                    libraryVideos,
+                    onLibraryVideoSelect: (modelId, gcsUrl) => setLibraryVideos((prev) => ({ ...prev, [modelId]: gcsUrl })),
+                    onLibraryVideoRemove: (modelId) => setLibraryVideos((prev) => { const next = { ...prev }; delete next[modelId]; return next; }),
+                    selectedModelIds,
                   }}
                   videoUrl={previewUrl || undefined}
                   sourceDuration={sourceDuration}

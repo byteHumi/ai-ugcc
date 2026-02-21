@@ -2,7 +2,7 @@ export type Job = {
   id: string;
   tiktokUrl?: string;
   videoUrl?: string;
-  videoSource?: 'tiktok' | 'upload';
+  videoSource?: 'tiktok' | 'upload' | 'library';
   imageUrl: string;
   imageName?: string;
   status: string;
@@ -259,7 +259,7 @@ export type TemplateJob = {
   totalSteps: number;
   step: string;
   pipeline: MiniAppStep[];
-  videoSource: 'tiktok' | 'upload';
+  videoSource: 'tiktok' | 'upload' | 'library';
   tiktokUrl?: string;
   videoUrl?: string;
   outputUrl?: string;

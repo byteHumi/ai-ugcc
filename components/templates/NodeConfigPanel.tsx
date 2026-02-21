@@ -11,6 +11,7 @@ import AttachVideoConfig from './AttachVideoConfig';
 import BatchVideoGenConfig from './BatchVideoGenConfig';
 import TextOverlayPreview from './TextOverlayPreview';
 import ComposeStepConfig from './ComposeStepConfig';
+import LibraryVideoSelector from './LibraryVideoSelector';
 
 const nodeMeta: Record<MiniAppType, { label: string; icon: typeof Video; iconBg: string; iconColor: string }> = {
   'video-generation': { label: 'Video Generation', icon: Video, iconBg: '#f3f0ff', iconColor: '#7c3aed' },
@@ -22,18 +23,23 @@ const nodeMeta: Record<MiniAppType, { label: string; icon: typeof Video; iconBg:
 };
 
 type SourceConfig = {
-  videoSource: 'tiktok' | 'upload';
+  videoSource: 'tiktok' | 'upload' | 'library';
   tiktokUrl: string;
   videoUrl: string;
   previewUrl?: string;
   uploadedFilename: string;
   isUploading: boolean;
   uploadProgress: number;
-  onVideoSourceChange: (src: 'tiktok' | 'upload') => void;
+  onVideoSourceChange: (src: 'tiktok' | 'upload' | 'library') => void;
   onTiktokUrlChange: (url: string) => void;
   onVideoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onVideoRemove: () => void;
   onFileDrop?: (file: File) => void;
+  // Library mode
+  libraryVideos?: Record<string, string>;
+  onLibraryVideoSelect?: (modelId: string, gcsUrl: string) => void;
+  onLibraryVideoRemove?: (modelId: string) => void;
+  selectedModelIds?: string[];
 };
 
 export type MasterModel = { modelId: string; modelName: string; primaryImageUrl: string; primaryGcsUrl: string };
@@ -86,7 +92,10 @@ export default function NodeConfigPanel({
         <div className={`p-4 ${isExpanded ? '' : 'space-y-4'}`}>
           <div className={isExpanded ? 'mx-auto max-w-2xl space-y-4' : 'space-y-4'}>
           <div className="flex gap-2">
-            {(['tiktok', 'upload'] as const).map((src) => (
+            {(masterMode
+              ? (['tiktok', 'upload', 'library'] as const)
+              : (['tiktok', 'upload'] as const)
+            ).map((src) => (
               <button
                 key={src}
                 onClick={() => sourceConfig.onVideoSourceChange(src)}
@@ -96,12 +105,20 @@ export default function NodeConfigPanel({
                     : 'border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--accent)] hover:text-[var(--text)]'
                 }`}
               >
-                {src === 'tiktok' ? 'Paste URL' : 'Upload Video'}
+                {src === 'tiktok' ? 'Paste URL' : src === 'upload' ? 'Upload Video' : 'From Library'}
               </button>
             ))}
           </div>
 
-          {sourceConfig.videoSource === 'tiktok' ? (
+          {sourceConfig.videoSource === 'library' && masterMode ? (
+            <LibraryVideoSelector
+              masterModels={masterModels || []}
+              selectedModelIds={sourceConfig.selectedModelIds || []}
+              libraryVideos={sourceConfig.libraryVideos || {}}
+              onSelect={sourceConfig.onLibraryVideoSelect || (() => {})}
+              onRemove={sourceConfig.onLibraryVideoRemove || (() => {})}
+            />
+          ) : sourceConfig.videoSource === 'tiktok' ? (
             <div className="space-y-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--text-muted)]">Video URL</label>

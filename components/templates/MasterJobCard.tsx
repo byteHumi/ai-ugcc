@@ -3,6 +3,15 @@
 import { Loader2, CheckCircle2, XCircle, AlertCircle, Check, ThumbsUp, ThumbsDown, RotateCcw, Copy, Pencil, Send, FileEdit } from 'lucide-react';
 import type { TemplateJob } from '@/types';
 
+const STEP_LABELS: Record<string, string> = {
+  'video-generation': 'Video',
+  'batch-video-generation': 'Batch Video',
+  'text-overlay': 'Text',
+  'bg-music': 'Music',
+  'attach-video': 'Attach',
+  'compose': 'Compose',
+};
+
 export default function MasterJobCard({
   job,
   modelName,
@@ -46,6 +55,9 @@ export default function MasterJobCard({
   const canRepost = isCompleted && job.postStatus === 'posted';
   const canRegenerate = (isCompleted || isFailed) && !isProcessing;
   const isBusy = isApproving || isRejecting || isRegenerating;
+
+  const enabledSteps = (job.pipeline || []).filter(s => s.enabled);
+  const completedStepIds = new Set((job.stepResults || []).map(r => r.stepId));
 
   return (
     <div
@@ -131,13 +143,41 @@ export default function MasterJobCard({
             <div className="text-[10px] text-[var(--text-muted)] text-center leading-tight">{job.step || 'Processing...'}</div>
           </div>
         ) : isFailed ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2">
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-4">
             <AlertCircle className="h-6 w-6 text-red-400" />
-            <div className="text-[10px] text-red-400">Failed</div>
+            <div className="text-[10px] font-medium text-red-400">Failed</div>
+            {job.error && (
+              <div className="text-[9px] text-red-300/80 text-center leading-snug line-clamp-3 max-w-full">
+                {job.error}
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex h-full items-center justify-center">
             <div className="text-[10px] text-[var(--text-muted)]">Queued</div>
+          </div>
+        )}
+
+        {/* Mini pipeline steps indicator */}
+        {enabledSteps.length > 1 && (
+          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-black/50 px-2 py-1 backdrop-blur-sm">
+            {enabledSteps.map((step, i) => {
+              const isDone = completedStepIds.has(step.id);
+              const isCurrent = isProcessing && i === (job.currentStep || 0);
+              const isFutureOrFailed = isFailed && !isDone;
+              return (
+                <div
+                  key={step.id}
+                  title={`${STEP_LABELS[step.type] || step.type}${isDone ? ' (done)' : isCurrent ? ' (running)' : ''}`}
+                  className={`h-1.5 rounded-full transition-all ${
+                    isDone ? 'w-3 bg-emerald-400' :
+                    isCurrent ? 'w-3 bg-master animate-pulse' :
+                    isFutureOrFailed ? 'w-1.5 bg-red-400/50' :
+                    'w-1.5 bg-white/30'
+                  }`}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -222,7 +262,7 @@ export default function MasterJobCard({
                   title="Approve & Post"
                 >
                   <ThumbsUp className="h-3 w-3" />
-                  Approve
+                  <span className="hidden sm:inline">Approve</span>
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onReject?.(); }}

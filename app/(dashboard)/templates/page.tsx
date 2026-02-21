@@ -14,7 +14,7 @@ const DRAFT_KEY = 'ai-ugc-pipeline-draft';
 type PipelineDraft = {
   steps: MiniAppStep[];
   name: string;
-  videoSource: 'tiktok' | 'upload';
+  videoSource: 'tiktok' | 'upload' | 'library';
   tiktokUrl: string;
   videoUrl: string;
   uploadedFilename: string;
@@ -37,7 +37,7 @@ export default function TemplatesPage() {
   const draft = useRef(loadDraft());
   const [steps, setSteps] = useState<MiniAppStep[]>(() => draft.current?.steps ?? []);
   const [name] = useState(() => draft.current?.name ?? '');
-  const [videoSource, setVideoSource] = useState<'tiktok' | 'upload'>(() => draft.current?.videoSource ?? 'tiktok');
+  const [videoSource, setVideoSource] = useState<'tiktok' | 'upload' | 'library'>(() => draft.current?.videoSource ?? 'tiktok');
   const [tiktokUrl, setTiktokUrl] = useState(() => draft.current?.tiktokUrl ?? '');
   const [videoUrl, setVideoUrl] = useState(() => draft.current?.videoUrl ?? '');
   const [uploadedFilename, setUploadedFilename] = useState(() => draft.current?.uploadedFilename ?? '');

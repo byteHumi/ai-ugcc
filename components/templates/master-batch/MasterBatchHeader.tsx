@@ -48,8 +48,8 @@ export default function MasterBatchHeader({
             <Crown className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-master dark:text-master-foreground">{batch.name}</h1>
-            <p className="text-xs text-[var(--text-muted)]">
+            <h1 className="text-lg sm:text-2xl font-bold tracking-tight text-master dark:text-master-foreground truncate">{batch.name}</h1>
+            <p className="text-[10px] sm:text-xs text-[var(--text-muted)]">
               {masterConfig?.models?.length || 0} models · {batch.totalJobs} videos
               {masterConfig?.publishMode && ` · ${masterConfig.publishMode}`}
             </p>

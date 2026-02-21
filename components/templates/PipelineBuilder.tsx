@@ -257,7 +257,7 @@ export default function PipelineBuilder({
   onChange: (steps: MiniAppStep[]) => void;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  videoSource: 'tiktok' | 'upload';
+  videoSource: 'tiktok' | 'upload' | 'library';
   tiktokUrl: string;
   videoUrl: string;
   validationErrors?: Map<string, string>;
@@ -366,10 +366,12 @@ export default function PipelineBuilder({
   };
   const handleZoomIn = () => setZoom((z) => clamp(z + ZOOM_STEP, MIN_ZOOM, MAX_ZOOM));
   const handleZoomOut = () => setZoom((z) => clamp(z - ZOOM_STEP, MIN_ZOOM, MAX_ZOOM));
-  const sourceHasValue = videoSource === 'tiktok' ? !!tiktokUrl : !!videoUrl;
-  const sourceSummary = videoSource === 'tiktok'
-    ? (tiktokUrl ? tiktokUrl.slice(0, 28) + '\u2026' : 'Configure TikTok URL\u2026')
-    : (videoUrl ? 'Video uploaded' : 'Upload a video\u2026');
+  const sourceHasValue = videoSource === 'library' ? true : videoSource === 'tiktok' ? !!tiktokUrl : !!videoUrl;
+  const sourceSummary = videoSource === 'library'
+    ? 'Per-model library videos'
+    : videoSource === 'tiktok'
+      ? (tiktokUrl ? tiktokUrl.slice(0, 28) + '\u2026' : 'Configure TikTok URL\u2026')
+      : (videoUrl ? 'Video uploaded' : 'Upload a video\u2026');
   const enabledCount = steps.filter((s) => s.enabled).length;
   const dotSize = 20 * zoom;
   return (

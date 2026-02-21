@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   try {
     await initDatabase();
     const body = await request.json();
-    const { name, pipeline, videoSource, tiktokUrl, videoUrl, modelIds, caption, scheduledFor, timezone, publishMode } = body;
+    const { name, pipeline, videoSource, tiktokUrl, videoUrl, libraryVideos, modelIds, caption, scheduledFor, timezone, publishMode } = body;
 
     const session = await auth();
     const createdBy = session?.user?.name?.split(' ')[0] || null;
@@ -53,8 +53,19 @@ export async function POST(request: NextRequest) {
       }
     } else if (firstEnabled.type !== 'compose') {
       // Non-video, non-compose first step always needs input video
-      if (!tiktokUrl && !videoUrl) {
+      if (!tiktokUrl && !videoUrl && videoSource !== 'library') {
         return NextResponse.json({ error: 'A video source is required (TikTok URL or uploaded video)' }, { status: 400 });
+      }
+    }
+
+    // Library mode: validate per-model video URLs
+    if (videoSource === 'library') {
+      if (!libraryVideos || typeof libraryVideos !== 'object') {
+        return NextResponse.json({ error: 'Library videos mapping is required for library mode' }, { status: 400 });
+      }
+      const missing = modelIds.filter((id: string) => !libraryVideos[id]);
+      if (missing.length > 0) {
+        return NextResponse.json({ error: `Missing library video for ${missing.length} model(s)` }, { status: 400 });
       }
     }
 
@@ -159,12 +170,24 @@ export async function POST(request: NextRequest) {
       });
 
       const jobName = `${name} - ${model.name}`;
+
+      // Determine per-job video source
+      let jobVideoSource: 'tiktok' | 'upload' = videoUrl ? 'upload' : 'tiktok';
+      let jobTiktokUrl = tiktokUrl || null;
+      let jobVideoUrl = videoUrl || null;
+
+      if (videoSource === 'library' && libraryVideos?.[model.id]) {
+        jobVideoSource = 'upload';
+        jobTiktokUrl = null;
+        jobVideoUrl = libraryVideos[model.id];
+      }
+
       const job = await createTemplateJob({
         name: jobName,
         pipeline: clonedPipeline,
-        videoSource: videoUrl ? 'upload' : 'tiktok',
-        tiktokUrl: tiktokUrl || null,
-        videoUrl: videoUrl || null,
+        videoSource: jobVideoSource,
+        tiktokUrl: jobTiktokUrl,
+        videoUrl: jobVideoUrl,
         pipelineBatchId: batch.id,
         modelId: model.id,
         createdBy,
@@ -177,9 +200,11 @@ export async function POST(request: NextRequest) {
 
     // --- Schedule batch processing ---
     const childJobIds = childJobs.filter(Boolean).map((j) => j!.id);
+    const batchTiktokUrl = videoSource === 'library' ? null : (tiktokUrl || null);
+    const batchVideoUrl = videoSource === 'library' ? null : (videoUrl || null);
     after(async () => {
       try {
-        await processPipelineBatch(childJobIds, tiktokUrl || null, videoUrl || null);
+        await processPipelineBatch(childJobIds, batchTiktokUrl, batchVideoUrl);
       } catch (err) {
         console.error(`processPipelineBatch error for master batch ${batch.id}:`, err);
       }
