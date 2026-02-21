@@ -41,7 +41,7 @@ function formatDateLabel(dateStr: string, totalDays: number): string {
 type FollowerPoint = { date: string; followers: number };
 
 export default function FollowersChart({ globalFilter }: { globalFilter?: number }) {
-  const [filter, setFilter] = useState(30);
+  const [filter, setFilter] = useState(0);
   const [rawData, setRawData] = useState<FollowerPoint[]>([]);
   const [currentFollowers, setCurrentFollowers] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);

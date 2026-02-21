@@ -31,7 +31,7 @@ export function useAnalytics() {
       const [overviewRes, accountsRes, mediaRes] = await Promise.all([
         fetch('/api/analytics/overview', { cache: 'no-store' }),
         fetch('/api/analytics/accounts', { cache: 'no-store' }),
-        fetch('/api/analytics/media?limit=100', { cache: 'no-store' }),
+        fetch('/api/analytics/media?limit=5000', { cache: 'no-store' }),
       ]);
 
       const overviewData = await overviewRes.json();
