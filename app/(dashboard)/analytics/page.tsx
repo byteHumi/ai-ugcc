@@ -359,10 +359,10 @@ function AnalyticsContent() {
           {/* Charts row: Audience Growth + Daily Subscribers */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
-              <FollowersChart />
+              <FollowersChart refreshKey={overview?.lastSyncedAt || ''} />
             </div>
             <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
-              <DailyFollowersChart />
+              <DailyFollowersChart refreshKey={overview?.lastSyncedAt || ''} />
             </div>
           </div>
 
@@ -372,7 +372,7 @@ function AnalyticsContent() {
               <PlatformComparison overview={overview} />
             </div>
             <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
-              <PostingActivity />
+              <PostingActivity refreshKey={overview?.lastSyncedAt || ''} />
             </div>
           </div>
 

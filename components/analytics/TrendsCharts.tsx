@@ -102,6 +102,9 @@ export default function TrendsCharts({
   const [contentData, setContentData] = useState<PlatformData[]>([]);
   const [contentLoading, setContentLoading] = useState(true);
 
+  // Re-fetch all charts when a sync completes (lastSyncedAt changes)
+  const refreshKey = overview?.lastSyncedAt || '';
+
   const fetchMetrics = useCallback(async (days: number, target: 'metrics' | 'eng') => {
     try {
       const param = days > 0 ? `?days=${days}` : '';
@@ -133,17 +136,17 @@ export default function TrendsCharts({
   useEffect(() => {
     setMetricsLoading(true);
     fetchMetrics(metricsFilter, 'metrics');
-  }, [metricsFilter, fetchMetrics]);
+  }, [metricsFilter, fetchMetrics, refreshKey]);
 
   useEffect(() => {
     setEngLoading(true);
     fetchMetrics(engFilter, 'eng');
-  }, [engFilter, fetchMetrics]);
+  }, [engFilter, fetchMetrics, refreshKey]);
 
   useEffect(() => {
     setPieLoading(true);
     fetchPiePlatforms(pieFilter);
-  }, [pieFilter, fetchPiePlatforms]);
+  }, [pieFilter, fetchPiePlatforms, refreshKey]);
 
   const fetchPlatEngData = useCallback(async (days: number) => {
     try {
@@ -161,7 +164,7 @@ export default function TrendsCharts({
   useEffect(() => {
     setPlatEngLoading(true);
     fetchPlatEngData(platEngFilter);
-  }, [platEngFilter, fetchPlatEngData]);
+  }, [platEngFilter, fetchPlatEngData, refreshKey]);
 
   const fetchContentData = useCallback(async (days: number) => {
     try {
@@ -179,7 +182,7 @@ export default function TrendsCharts({
   useEffect(() => {
     setContentLoading(true);
     fetchContentData(contentFilter);
-  }, [contentFilter, fetchContentData]);
+  }, [contentFilter, fetchContentData, refreshKey]);
 
   // Fill in missing dates for continuous timeline
   const chartData = useMemo(() => {
@@ -566,7 +569,7 @@ export default function TrendsCharts({
 
         {/* Engagement Breakdown */}
         <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
-          <EngagementTrend />
+          <EngagementTrend refreshKey={refreshKey} />
         </div>
       </div>
 

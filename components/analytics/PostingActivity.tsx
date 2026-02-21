@@ -35,7 +35,7 @@ function formatDateLabel(dateStr: string, totalDays: number): string {
   return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 }
 
-export default function PostingActivity() {
+export default function PostingActivity({ refreshKey }: { refreshKey?: string }) {
   const [filter, setFilter] = useState(30);
   const [rawData, setRawData] = useState<PostingActivityEntry[]>([]);
   const [totalVideos, setTotalVideos] = useState(0);
@@ -64,7 +64,7 @@ export default function PostingActivity() {
   useEffect(() => {
     setLoading(true);
     fetchData(filter);
-  }, [filter, fetchData]);
+  }, [filter, fetchData, refreshKey]);
 
   // Fill in missing dates so the chart has no gaps
   const chartData = useMemo(() => {

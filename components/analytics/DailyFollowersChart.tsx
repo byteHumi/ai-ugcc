@@ -33,7 +33,7 @@ function formatDateLabel(dateStr: string, totalDays: number): string {
 
 type FollowerPoint = { date: string; followers: number };
 
-export default function DailyFollowersChart({ globalFilter }: { globalFilter?: number }) {
+export default function DailyFollowersChart({ globalFilter, refreshKey }: { globalFilter?: number; refreshKey?: string }) {
   const [filter, setFilter] = useState(0);
   const [rawData, setRawData] = useState<FollowerPoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +63,7 @@ export default function DailyFollowersChart({ globalFilter }: { globalFilter?: n
   useEffect(() => {
     setLoading(true);
     fetchData(filter);
-  }, [filter, fetchData]);
+  }, [filter, fetchData, refreshKey]);
 
   const chartData = useMemo(() => {
     if (rawData.length === 0) return [];

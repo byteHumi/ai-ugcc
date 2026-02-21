@@ -43,7 +43,7 @@ function formatDateLabel(dateStr: string, totalDays: number): string {
   return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 }
 
-export default function EngagementTrend() {
+export default function EngagementTrend({ refreshKey }: { refreshKey?: string }) {
   const [filter, setFilter] = useState(30);
   const [rawData, setRawData] = useState<DailyMetric[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +64,7 @@ export default function EngagementTrend() {
   useEffect(() => {
     setLoading(true);
     fetchData(filter);
-  }, [filter, fetchData]);
+  }, [filter, fetchData, refreshKey]);
 
   const chartData = useMemo(() => {
     if (rawData.length === 0) return [];
