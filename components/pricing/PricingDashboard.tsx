@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Fragment, type ReactNode } from 'react';
 import {
   AreaChart, Area,
   XAxis, YAxis, CartesianGrid,
 } from 'recharts';
-import { RefreshCw, Image, Video, Calendar, User, Briefcase, Clock, AlertCircle, CheckCircle2, Loader2, TrendingUp } from 'lucide-react';
+import { RefreshCw, Image, Video, Calendar, User, Briefcase, Clock, AlertCircle, CheckCircle2, Loader2, TrendingUp, CalendarRange, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight, DollarSign } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent, type ChartConfig } from '@/components/ui/chart';
@@ -21,18 +21,98 @@ type Summary = {
   video_cost: number;
   image_requests: number;
   video_requests: number;
+  image_success: number;
+  video_success: number;
+  image_failed: number;
+  video_failed: number;
 };
 
 type DailyEntry = { date: string; image_success: number; video_success: number; failed: number; image_cost: number; video_cost: number };
+type MonthlyEntry = { month_start: string; image_count: number; video_count: number; failed: number; image_cost: number; video_cost: number; total_cost: number; video_seconds: number };
+type WeekBucketEntry = MonthlyEntry & { week_of_month: number; first_day: string; last_day: string };
+type BreakdownView = 'monthly' | 'weekly';
 type TimeseriesEntry = { ts: string; success: number; failed: number; processing: number };
 type ModelEntry = { model: string; type: string; total: number; successful: number; failed: number; total_cost: number };
 type UserEntry = { user_key: string; display_name: string; email: string | null; total: number; successful: number; failed: number; total_cost: number; images: number; videos: number };
 type JobEntry = { job_id: string; total: number; successful: number; failed: number; total_cost: number; total_duration: number; job_name?: string; job_status?: string; model_name?: string; batch_name?: string; is_master?: boolean; job_created_by?: string };
 type RecentEntry = { id: string; type: string; model: string; status: string; cost: number | null; duration_seconds: number | null; error: string | null; created_by: string | null; created_by_email: string | null; created_at: string; metadata?: Record<string, unknown> | null };
 type FalPrice = { endpoint_id: string; unit_price: number; unit: string; currency: string };
-type Period = '24h' | '7d' | '30d' | 'custom';
+type Period = '24h' | '7d' | '30d' | '90d' | '6m' | '1y' | 'custom';
 
 function toDateStr(d: Date) { return d.toISOString().slice(0, 10); }
+// Thousands-separated integer, e.g. 35898 → "35,898".
+function fmtNum(n: number) { return Math.round(n).toLocaleString('en-US'); }
+// Money with grouping + 2 decimals, e.g. 6138.5 → "$6,138.50".
+function fmtMoney(n: number) {
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+// Seconds → compact readable duration: "4h 39m", "12m 30s", "45s", or "—".
+function fmtDuration(seconds: number) {
+  if (!seconds || seconds <= 0) return '—';
+  const s = Math.round(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s % 60}s`;
+  return `${s}s`;
+}
+// Label a week bucket by the actual span of data it contains — honest even when
+// the bucket is clipped by a short selected period (e.g. "May 12–14", not "May 8-14").
+function dayRangeLabel(firstDay: string, lastDay: string) {
+  const parse = (s: string) => { const [y, m, d] = s.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); };
+  const a = parse(firstDay), b = parse(lastDay);
+  const fmt = (dt: Date) => dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (firstDay.slice(0, 10) === lastDay.slice(0, 10)) return fmt(a);
+  if (a.getMonth() === b.getMonth()) return `${fmt(a)}–${b.getDate()}`;
+  return `${fmt(a)} – ${fmt(b)}`;
+}
+function monthLabel(monthStart: string) {
+  const [y, m] = monthStart.slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+// Period-over-period delta badge. For spend, an increase is shown in the error
+// color (more money out) and a decrease in the success color.
+function Delta({ curr, prev }: { curr: number; prev: number | null }) {
+  if (prev == null) return <span className="text-xs text-muted-foreground">—</span>;
+  if (prev === 0) {
+    return curr > 0
+      ? <span className="text-xs font-medium text-[var(--error)]">new</span>
+      : <span className="text-xs text-muted-foreground">—</span>;
+  }
+  const pct = ((curr - prev) / prev) * 100;
+  if (Math.abs(pct) < 0.5) return <span className="text-xs text-muted-foreground">±0%</span>;
+  const up = pct > 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${up ? 'text-[var(--error)]' : 'text-[var(--success)]'}`}>
+      {up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+      {Math.abs(pct).toFixed(0)}%
+    </span>
+  );
+}
+// Compact KPI card: icon badge, label, big value, supporting line.
+function StatCard({ icon, label, value, sub, accent }: {
+  icon: ReactNode; label: string; value: string; sub: ReactNode; accent?: 'primary' | 'purple';
+}) {
+  const valueColor = accent === 'primary' ? 'text-[var(--primary)]'
+    : accent === 'purple' ? 'text-[var(--purple)]' : 'text-foreground';
+  const badge = accent === 'primary' ? 'bg-[var(--primary)]/10 text-[var(--primary)]'
+    : accent === 'purple' ? 'bg-[var(--purple)]/10 text-[var(--purple)]'
+    : 'bg-foreground/[0.06] text-muted-foreground';
+  return (
+    <Card className="gap-0 py-0 transition-colors hover:border-foreground/20">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2">
+          <div className={`flex h-7 w-7 items-center justify-center rounded-md ${badge}`}>
+            {icon}
+          </div>
+          <span className="text-xs font-medium text-muted-foreground">{label}</span>
+        </div>
+        <p className={`mt-3 text-2xl font-bold leading-none tracking-tight tabular-nums ${valueColor}`}>{value}</p>
+        <p className="mt-1.5 text-xs text-muted-foreground">{sub}</p>
+      </CardContent>
+    </Card>
+  );
+}
 function timeAgo(dateStr: string) {
   const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (s < 60) return 'just now';
@@ -53,12 +133,16 @@ const costChartConfig = {
 } satisfies ChartConfig;
 
 export default function PricingDashboard() {
-  const [period, setPeriod] = useState<Period>('30d');
+  const [period, setPeriod] = useState<Period>('90d');
   const [customFrom, setCustomFrom] = useState(() => toDateStr(new Date(Date.now() - 7 * 86400000)));
   const [customTo, setCustomTo] = useState(() => toDateStr(new Date()));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [daily, setDaily] = useState<DailyEntry[]>([]);
+  const [weekBuckets, setWeekBuckets] = useState<WeekBucketEntry[]>([]);
+  const [monthly, setMonthly] = useState<MonthlyEntry[]>([]);
+  const [breakdownView, setBreakdownView] = useState<BreakdownView>('monthly');
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [timeseries, setTimeseries] = useState<TimeseriesEntry[]>([]);
   const [byModel, setByModel] = useState<ModelEntry[]>([]);
   const [byUser, setByUser] = useState<UserEntry[]>([]);
@@ -83,6 +167,8 @@ export default function PricingDashboard() {
       }
       setSummary(data.summary || null);
       setDaily(data.daily || []);
+      setWeekBuckets(data.weekBuckets || []);
+      setMonthly(data.monthly || []);
       setTimeseries(data.timeseries || []);
       setByModel(data.byModel || []);
       setByUser(data.byUser || []);
@@ -102,6 +188,14 @@ export default function PricingDashboard() {
     ? Math.round((summary.successful / summary.total_requests) * 100)
     : 100;
 
+  const toggleMonth = (key: string) => {
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   // Model names for the chart filter
   const modelNames = useMemo(() => {
     const names = byModel.map(m => m.model);
@@ -120,7 +214,8 @@ export default function PricingDashboard() {
       start = new Date(customFrom);
       end = new Date(customTo);
     } else {
-      const days = period === '24h' ? 1 : period === '7d' ? 7 : 30;
+      const days = period === '24h' ? 1 : period === '7d' ? 7
+        : period === '90d' ? 90 : period === '6m' ? 182 : period === '1y' ? 365 : 30;
       start = new Date(Date.now() - days * 86400000);
     }
     start.setHours(0, 0, 0, 0);
@@ -204,7 +299,13 @@ export default function PricingDashboard() {
     return lastDataIdx >= 0 ? padded.slice(0, lastDataIdx + 1) : padded;
   }, [daily, dateRange, period]);
 
-  const periodLabel = period === '24h' ? 'Last 24 hours' : period === '7d' ? 'Last 7 days' : period === '30d' ? 'Last 30 days' : 'Custom range';
+  const periodLabel = period === '24h' ? 'Last 24 hours'
+    : period === '7d' ? 'Last 7 days'
+    : period === '30d' ? 'Last 30 days'
+    : period === '90d' ? 'Last 90 days'
+    : period === '6m' ? 'Last 6 months'
+    : period === '1y' ? 'Last 12 months'
+    : 'Custom range';
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
@@ -216,10 +317,10 @@ export default function PricingDashboard() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 rounded-lg border bg-card px-1 py-0.5">
-            {(['24h', '7d', '30d'] as Period[]).map((p) => (
+            {(['24h', '7d', '30d', '90d', '1y'] as Period[]).map((p) => (
               <button key={p} onClick={() => { setPeriod(p); setShowDatePicker(false); }}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${period === p ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-                {p === '24h' ? '24h' : p === '7d' ? '7d' : '30d'}
+                {p}
               </button>
             ))}
             <button onClick={() => { if (period === 'custom') setShowDatePicker(!showDatePicker); else { setPeriod('custom'); setShowDatePicker(true); } }}
@@ -275,55 +376,154 @@ export default function PricingDashboard() {
         <>
           {/* ── Top stat cards ── */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Card className="py-3 gap-1">
-              <CardHeader className="px-4 py-0">
-                <CardDescription className="flex items-center gap-1 text-[11px]">
-                  <TrendingUp className="h-3 w-3" />
-                  Total requests
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="px-4 py-0">
-                <p className="text-xl font-bold leading-none">{summary.total_requests}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{successRate}% success rate</p>
-              </CardContent>
-            </Card>
-
-            <Card className="py-3 gap-1">
-              <CardHeader className="px-4 py-0">
-                <CardDescription className="text-[11px]">Total cost</CardDescription>
-              </CardHeader>
-              <CardContent className="px-4 py-0">
-                <p className="text-xl font-bold text-[var(--primary)] leading-none">${summary.total_cost.toFixed(2)}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">${summary.image_cost.toFixed(2)} images + ${summary.video_cost.toFixed(2)} videos</p>
-              </CardContent>
-            </Card>
-
-            <Card className="py-3 gap-1">
-              <CardHeader className="px-4 py-0">
-                <CardDescription className="flex items-center gap-1 text-[11px]">
-                  <Image className="h-3 w-3" />
-                  Images
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="px-4 py-0">
-                <p className="text-xl font-bold text-[var(--primary)] leading-none">{summary.image_requests}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">${summary.image_cost.toFixed(2)} spent</p>
-              </CardContent>
-            </Card>
-
-            <Card className="py-3 gap-1">
-              <CardHeader className="px-4 py-0">
-                <CardDescription className="flex items-center gap-1 text-[11px]">
-                  <Video className="h-3 w-3" />
-                  Videos
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="px-4 py-0">
-                <p className="text-xl font-bold text-[var(--purple)] leading-none">{summary.video_requests}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">${summary.video_cost.toFixed(2)} spent</p>
-              </CardContent>
-            </Card>
+            <StatCard
+              icon={<TrendingUp className="h-4 w-4" />}
+              label="Total requests"
+              value={fmtNum(summary.total_requests)}
+              sub={
+                <span className="inline-flex items-center gap-1">
+                  <span className={`h-1.5 w-1.5 rounded-full ${successRate >= 90 ? 'bg-[var(--success)]' : successRate >= 70 ? 'bg-amber-500' : 'bg-[var(--error)]'}`} />
+                  {successRate}% success rate
+                </span>
+              }
+            />
+            <StatCard
+              icon={<DollarSign className="h-4 w-4" />}
+              label="Total cost"
+              accent="primary"
+              value={fmtMoney(summary.total_cost)}
+              sub={`${fmtMoney(summary.image_cost)} images · ${fmtMoney(summary.video_cost)} videos`}
+            />
+            <StatCard
+              icon={<Image className="h-4 w-4" />}
+              label="Images generated"
+              accent="primary"
+              value={fmtNum(summary.image_success)}
+              sub={`${fmtMoney(summary.image_cost)} spent${summary.image_failed > 0 ? ` · ${fmtNum(summary.image_failed)} failed` : ''}`}
+            />
+            <StatCard
+              icon={<Video className="h-4 w-4" />}
+              label="Videos generated"
+              accent="purple"
+              value={fmtNum(summary.video_success)}
+              sub={`${fmtMoney(summary.video_cost)} spent${summary.video_failed > 0 ? ` · ${fmtNum(summary.video_failed)} failed` : ''}`}
+            />
           </div>
+
+          {/* ── Spend breakdown: month-on-month / week-on-week ── */}
+          {monthly.length > 0 && (
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+                <div className="grid gap-1">
+                  <CardTitle className="flex items-center gap-2">
+                    <CalendarRange className="h-4 w-4 text-muted-foreground" />
+                    Spend breakdown
+                  </CardTitle>
+                  <CardDescription>
+                    {breakdownView === 'monthly'
+                      ? (monthly.length > 1
+                          ? 'Month-on-month spend — click a month to expand its weeks'
+                          : 'Spend this month — click the month to expand its weeks')
+                      : 'Week-by-week spend across the selected range'}
+                    {' — '}{periodLabel}
+                  </CardDescription>
+                </div>
+                <div className="flex shrink-0 items-center gap-1 rounded-lg border bg-card px-1 py-0.5">
+                  {(['monthly', 'weekly'] as BreakdownView[]).map((v) => (
+                    <button key={v} onClick={() => setBreakdownView(v)}
+                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${breakdownView === v ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                      {v === 'monthly' ? 'Month on month' : 'Week on week'}
+                    </button>
+                  ))}
+                </div>
+              </CardHeader>
+              <CardContent className="px-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-[11px] font-medium uppercase tracking-wider">{breakdownView === 'monthly' ? 'Month' : 'Week'}</TableHead>
+                      <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider">Images</TableHead>
+                      <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider">Videos</TableHead>
+                      <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider">Video time</TableHead>
+                      <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider">Image cost</TableHead>
+                      <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider">Video cost</TableHead>
+                      <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider">Total</TableHead>
+                      <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider">{breakdownView === 'monthly' ? 'MoM' : 'WoW'}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {breakdownView === 'monthly' ? monthly.map((m, i) => {
+                      const expanded = expandedMonths.has(m.month_start);
+                      const subWeeks = weekBuckets.filter((wb) => wb.month_start === m.month_start);
+                      return (
+                        <Fragment key={m.month_start}>
+                          <TableRow
+                            className={`cursor-pointer transition-colors ${expanded ? 'bg-accent/40 hover:bg-accent/50' : 'hover:bg-accent/30'}`}
+                            onClick={() => toggleMonth(m.month_start)}>
+                            <TableCell className="font-medium">
+                              <span className="inline-flex items-center gap-2">
+                                <span className={`flex h-5 w-5 items-center justify-center rounded ${expanded ? 'bg-foreground/10' : ''}`}>
+                                  {expanded
+                                    ? <ChevronDown className="h-3.5 w-3.5 text-foreground" />
+                                    : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                                </span>
+                                {monthLabel(m.month_start)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right"><Badge variant="secondary" className="font-mono tabular-nums">{fmtNum(m.image_count)}</Badge></TableCell>
+                            <TableCell className="text-right"><Badge variant="secondary" className="font-mono tabular-nums">{fmtNum(m.video_count)}</Badge></TableCell>
+                            <TableCell className="text-right tabular-nums text-muted-foreground">{fmtDuration(m.video_seconds)}</TableCell>
+                            <TableCell className="text-right tabular-nums text-[var(--primary)]">{fmtMoney(m.image_cost)}</TableCell>
+                            <TableCell className="text-right tabular-nums text-[var(--purple)]">{fmtMoney(m.video_cost)}</TableCell>
+                            <TableCell className="text-right tabular-nums font-semibold">{fmtMoney(m.total_cost)}</TableCell>
+                            <TableCell className="text-right"><Delta curr={m.total_cost} prev={i > 0 ? monthly[i - 1].total_cost : null} /></TableCell>
+                          </TableRow>
+                          {expanded && subWeeks.map((wb, j) => (
+                            <TableRow key={`${m.month_start}-${wb.week_of_month}`} className="border-0 bg-muted/20 hover:bg-muted/30">
+                              <TableCell className="py-2 pl-12 text-sm text-muted-foreground">
+                                <span className="inline-flex items-center gap-2">
+                                  <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
+                                  {dayRangeLabel(wb.first_day, wb.last_day)}
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-2 text-right text-sm tabular-nums text-muted-foreground">{fmtNum(wb.image_count)}</TableCell>
+                              <TableCell className="py-2 text-right text-sm tabular-nums text-muted-foreground">{fmtNum(wb.video_count)}</TableCell>
+                              <TableCell className="py-2 text-right text-sm tabular-nums text-muted-foreground">{fmtDuration(wb.video_seconds)}</TableCell>
+                              <TableCell className="py-2 text-right text-sm tabular-nums text-[var(--primary)]/75">{fmtMoney(wb.image_cost)}</TableCell>
+                              <TableCell className="py-2 text-right text-sm tabular-nums text-[var(--purple)]/75">{fmtMoney(wb.video_cost)}</TableCell>
+                              <TableCell className="py-2 text-right text-sm tabular-nums font-medium">{fmtMoney(wb.total_cost)}</TableCell>
+                              <TableCell className="py-2 text-right"><Delta curr={wb.total_cost} prev={j > 0 ? subWeeks[j - 1].total_cost : null} /></TableCell>
+                            </TableRow>
+                          ))}
+                        </Fragment>
+                      );
+                    }) : weekBuckets.map((wb, i) => (
+                      <TableRow key={`${wb.month_start}-${wb.week_of_month}`} className="transition-colors hover:bg-accent/30">
+                        <TableCell className="font-medium">{dayRangeLabel(wb.first_day, wb.last_day)}</TableCell>
+                        <TableCell className="text-right"><Badge variant="secondary" className="font-mono tabular-nums">{fmtNum(wb.image_count)}</Badge></TableCell>
+                        <TableCell className="text-right"><Badge variant="secondary" className="font-mono tabular-nums">{fmtNum(wb.video_count)}</Badge></TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">{fmtDuration(wb.video_seconds)}</TableCell>
+                        <TableCell className="text-right tabular-nums text-[var(--primary)]">{fmtMoney(wb.image_cost)}</TableCell>
+                        <TableCell className="text-right tabular-nums text-[var(--purple)]">{fmtMoney(wb.video_cost)}</TableCell>
+                        <TableCell className="text-right tabular-nums font-semibold">{fmtMoney(wb.total_cost)}</TableCell>
+                        <TableCell className="text-right"><Delta curr={wb.total_cost} prev={i > 0 ? weekBuckets[i - 1].total_cost : null} /></TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="border-t-2 bg-muted/40 font-semibold hover:bg-muted/40">
+                      <TableCell>Total</TableCell>
+                      <TableCell className="text-right tabular-nums">{fmtNum(monthly.reduce((s, m) => s + m.image_count, 0))}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fmtNum(monthly.reduce((s, m) => s + m.video_count, 0))}</TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">{fmtDuration(monthly.reduce((s, m) => s + m.video_seconds, 0))}</TableCell>
+                      <TableCell className="text-right tabular-nums text-[var(--primary)]">{fmtMoney(monthly.reduce((s, m) => s + m.image_cost, 0))}</TableCell>
+                      <TableCell className="text-right tabular-nums text-[var(--purple)]">{fmtMoney(monthly.reduce((s, m) => s + m.video_cost, 0))}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fmtMoney(monthly.reduce((s, m) => s + m.total_cost, 0))}</TableCell>
+                      <TableCell />
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
 
           {/* ── Request stats chart with model filter ── */}
           <Card className="pt-0">
@@ -498,16 +698,16 @@ export default function PricingDashboard() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Badge variant="secondary" className="font-mono">{u.images}</Badge>
+                          <Badge variant="secondary" className="font-mono tabular-nums">{fmtNum(u.images)}</Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Badge variant="secondary" className="font-mono">{u.videos}</Badge>
+                          <Badge variant="secondary" className="font-mono tabular-nums">{fmtNum(u.videos)}</Badge>
                         </TableCell>
-                        <TableCell className="text-right font-medium">{u.total}</TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">{fmtNum(u.total)}</TableCell>
                         <TableCell className="text-right">
-                          {u.failed > 0 ? <Badge variant="destructive" className="font-mono">{u.failed}</Badge> : <span className="text-muted-foreground">—</span>}
+                          {u.failed > 0 ? <Badge variant="destructive" className="font-mono tabular-nums">{fmtNum(u.failed)}</Badge> : <span className="text-muted-foreground">—</span>}
                         </TableCell>
-                        <TableCell className="text-right font-medium text-[var(--primary)]">${u.total_cost.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-medium tabular-nums text-[var(--primary)]">{fmtMoney(u.total_cost)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -561,9 +761,9 @@ export default function PricingDashboard() {
                           ) : <span className="text-muted-foreground">—</span>}
                         </TableCell>
                         <TableCell>{j.model_name || '—'}</TableCell>
-                        <TableCell className="text-right">{j.total}</TableCell>
-                        <TableCell className="text-right text-muted-foreground">{j.total_duration > 0 ? `${j.total_duration.toFixed(1)}s` : '—'}</TableCell>
-                        <TableCell className="text-right font-medium text-[var(--primary)]">${j.total_cost.toFixed(2)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{fmtNum(j.total)}</TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">{fmtDuration(j.total_duration)}</TableCell>
+                        <TableCell className="text-right font-medium tabular-nums text-[var(--primary)]">{fmtMoney(j.total_cost)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -602,8 +802,8 @@ export default function PricingDashboard() {
                               {row.type}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-right">{row.total}</TableCell>
-                          <TableCell className="text-right font-medium text-[var(--primary)]">${row.total_cost.toFixed(2)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{fmtNum(row.total)}</TableCell>
+                          <TableCell className="text-right font-medium tabular-nums text-[var(--primary)]">{fmtMoney(row.total_cost)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -677,7 +877,7 @@ export default function PricingDashboard() {
                         <TableCell className="max-w-[140px] truncate text-sm">{r.model.replace('fal-ai/', '')}</TableCell>
                         <TableCell className="text-muted-foreground text-sm">{timeAgo(r.created_at)}</TableCell>
                         <TableCell className="text-sm">{r.created_by || r.created_by_email?.split('@')[0] || '—'}</TableCell>
-                        <TableCell className="text-right text-sm">{r.cost != null ? `$${r.cost.toFixed(2)}` : '—'}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{r.cost != null ? fmtMoney(r.cost) : '—'}</TableCell>
                         <TableCell className="text-right">
                           {r.status === 'success' ? (
                             <Badge className="bg-[var(--success-bg)] text-[var(--success)] border-[var(--success)]/20 hover:bg-[var(--success-bg)]">

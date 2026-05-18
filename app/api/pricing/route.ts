@@ -55,7 +55,7 @@ export async function GET(req: Request) {
   try {
     await initDatabase();
     const { searchParams } = new URL(req.url);
-    const period = (searchParams.get('period') || '30d') as '24h' | '7d' | '30d';
+    const period = (searchParams.get('period') || '30d') as '24h' | '7d' | '30d' | '90d' | '6m' | '1y';
     const from = searchParams.get('from') || null;
     const to = searchParams.get('to') || null;
 

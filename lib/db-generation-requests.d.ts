@@ -21,8 +21,18 @@ export function updateGenerationRequest(
   },
 ): Promise<void>;
 
+export type GenerationPeriodEntry = {
+  image_count: number;
+  video_count: number;
+  failed: number;
+  image_cost: number;
+  video_cost: number;
+  total_cost: number;
+  video_seconds: number;
+};
+
 export function getGenerationRequestStats(params?: {
-  period?: '24h' | '7d' | '30d';
+  period?: '24h' | '7d' | '30d' | '90d' | '6m' | '1y';
   from?: string | null;
   to?: string | null;
 }): Promise<{
@@ -35,6 +45,10 @@ export function getGenerationRequestStats(params?: {
     video_cost: number;
     image_requests: number;
     video_requests: number;
+    image_success: number;
+    video_success: number;
+    image_failed: number;
+    video_failed: number;
   };
   daily: Array<{
     date: string;
@@ -44,6 +58,8 @@ export function getGenerationRequestStats(params?: {
     image_cost: number;
     video_cost: number;
   }>;
+  weekBuckets: Array<GenerationPeriodEntry & { month_start: string; week_of_month: number; first_day: string; last_day: string }>;
+  monthly: Array<GenerationPeriodEntry & { month_start: string }>;
   byModel: Array<{
     model: string;
     type: string;
