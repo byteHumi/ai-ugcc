@@ -439,26 +439,53 @@ export default function AgentPage() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let sawDone = false;
+        let sawError = false;
+        let lastEventAt = Date.now();
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split('\n\n');
-          buffer = parts.pop() || '';
-          for (const part of parts) {
-            const line = part.trim();
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (!payload) continue;
-            let evt: StreamEvent;
-            try {
-              evt = JSON.parse(payload) as StreamEvent;
-            } catch {
-              continue;
-            }
-            applyEvent(evt, assistantId);
+        // Watchdog: if the server stops sending bytes (including heartbeat
+        // pings) for too long, abort the read so the user gets a real error
+        // instead of a frozen spinner.
+        const STREAM_IDLE_TIMEOUT_MS = 60_000;
+        const watchdog = setInterval(() => {
+          if (Date.now() - lastEventAt > STREAM_IDLE_TIMEOUT_MS) {
+            reader.cancel().catch(() => {});
           }
+        }, 5_000);
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            lastEventAt = Date.now();
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop() || '';
+            for (const part of parts) {
+              const line = part.trim();
+              if (!line || line.startsWith(':')) continue; // SSE comment / heartbeat
+              if (!line.startsWith('data:')) continue;
+              const payload = line.slice(5).trim();
+              if (!payload) continue;
+              let evt: StreamEvent;
+              try {
+                evt = JSON.parse(payload) as StreamEvent;
+              } catch {
+                continue;
+              }
+              if (evt.type === 'done') sawDone = true;
+              if (evt.type === 'error') sawError = true;
+              applyEvent(evt, assistantId);
+            }
+          }
+        } finally {
+          clearInterval(watchdog);
+        }
+
+        if (!sawDone && !sawError) {
+          throw new Error(
+            'Agent stream closed before completing. The function likely timed out — try a more specific question or break it into smaller asks.',
+          );
         }
 
         void loadChats();

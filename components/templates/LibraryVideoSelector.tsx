@@ -41,10 +41,13 @@ type PipelineBatchData = {
   pipeline?: PipelineStepLite[];
 };
 
-// Module-level cache so data persists across re-mounts (e.g. switching steps)
+// Module-level cache so data persists across re-mounts (e.g. switching steps).
+// Keyed by the sorted, comma-joined selectedModelIds — switching the model
+// selection must invalidate the cache because the API filters server-side.
 let _cachedJobs: TemplateJobData[] | null = null;
 let _cachedBatches: PipelineBatchData[] | null = null;
 let _cacheTimestamp = 0;
+let _cacheModelIdsKey: string | null = null;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 const STEP_TYPE_LABELS: Record<string, string> = {
@@ -98,6 +101,7 @@ export default function LibraryVideoSelector({
   const [pipelineBatchesState, setPipelineBatchesState] = useState<PipelineBatchData[]>(_cachedBatches ?? []);
   const [initialLoading, setInitialLoading] = useState(_cachedJobs === null);
   const [refreshingModelId, setRefreshingModelId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -108,22 +112,37 @@ export default function LibraryVideoSelector({
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 
+  const selectedModelIdsKey = useMemo(
+    () => [...selectedModelIds].sort().join(','),
+    [selectedModelIds],
+  );
+
   const fetchJobs = useCallback(async (force = false, modelId?: string) => {
-    // Use cache if fresh and not forced
-    if (!force && _cachedJobs && _cachedBatches && Date.now() - _cacheTimestamp < CACHE_TTL) {
+    const cacheKeyMatches = _cacheModelIdsKey === selectedModelIdsKey;
+    // Use cache if fresh, not forced, and the selection key matches
+    if (!force && cacheKeyMatches && _cachedJobs && _cachedBatches && Date.now() - _cacheTimestamp < CACHE_TTL) {
       setTemplateJobs(_cachedJobs);
       setPipelineBatchesState(_cachedBatches);
       setInitialLoading(false);
       return;
+    }
+    // Selection changed — invalidate the cache so we don't render stale rows
+    if (!cacheKeyMatches) {
+      _cachedJobs = null;
+      _cachedBatches = null;
     }
     // Only show global loading on first load (no data yet)
     if (!_cachedJobs) setInitialLoading(true);
     // Track which model triggered the refresh
     if (modelId) setRefreshingModelId(modelId);
     else if (force) setRefreshingModelId('__all');
+    setLoadError(null);
     try {
+      const jobsUrl = selectedModelIdsKey
+        ? `/api/templates/library?modelIds=${encodeURIComponent(selectedModelIdsKey)}`
+        : '/api/templates/library';
       const [jobsRes, batchesRes] = await Promise.all([
-        fetch('/api/templates'),
+        fetch(jobsUrl),
         fetch('/api/pipeline-batches'),
       ]);
       if (jobsRes.ok) {
@@ -131,6 +150,8 @@ export default function LibraryVideoSelector({
         const jobs = Array.isArray(data) ? data : [];
         _cachedJobs = jobs;
         setTemplateJobs(jobs);
+      } else {
+        setLoadError(`Failed to load videos (${jobsRes.status})`);
       }
       if (batchesRes.ok) {
         const data = await batchesRes.json();
@@ -139,13 +160,14 @@ export default function LibraryVideoSelector({
         setPipelineBatchesState(batches);
       }
       _cacheTimestamp = Date.now();
-    } catch {
-      // ignore
+      _cacheModelIdsKey = selectedModelIdsKey;
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load videos');
     } finally {
       setInitialLoading(false);
       setRefreshingModelId(null);
     }
-  }, []);
+  }, [selectedModelIdsKey]);
 
   // Fetch template jobs on mount (uses cache if available)
   useEffect(() => {
@@ -373,6 +395,19 @@ export default function LibraryVideoSelector({
           </button>
         </div>
       </div>
+
+      {loadError && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-[10px] text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+          <span className="flex-1">{loadError}</span>
+          <button
+            onClick={() => fetchJobs(true)}
+            className="rounded px-1.5 py-0.5 font-semibold underline hover:opacity-80"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="h-1 w-full rounded-full bg-[var(--border)]">

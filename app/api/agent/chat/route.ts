@@ -19,9 +19,11 @@ import {
 } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
-const MODEL_ID = process.env.GEMINI_CHAT_MODEL || 'gemini-3-pro-preview';
+// Flash is ~3-5× faster than Pro for analytical SQL questions. Override per-env
+// if you need Pro for a specific deploy.
+const MODEL_ID = process.env.GEMINI_CHAT_MODEL || 'gemini-3-flash-preview';
 
 const PRODUCT_CONTEXT = `
 You are an expert data analyst embedded inside "AI UGC" — an internal tool built by the Runable team
@@ -474,29 +476,33 @@ export async function POST(req: Request) {
   if (!userMessage) return NextResponse.json({ error: 'userMessage required' }, { status: 400 });
 
   await ensureAgentChatsTables();
-  const chat = await getAgentChat(chatId);
-  if (!chat) return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
 
   const userEmail = session.user.email || null;
   const userName = session.user.name || null;
   const userImage = session.user.image || null;
 
-  // Persist the user message and auto-title the chat if this is the first message.
-  const priorMessages = await getAgentChatMessages(chatId);
-  await addAgentChatMessage({
-    chatId,
-    role: 'user',
-    content: userMessage,
-    toolCalls: null,
-    createdBy: userEmail,
-    createdByName: userName,
-    createdByImage: userImage,
-  });
-  if (priorMessages.length === 0 || chat.title === 'New chat' || !chat.title) {
-    await updateAgentChatTitle(chatId, makeTitle(userMessage));
-  } else {
-    await touchAgentChat(chatId);
-  }
+  // Fetch the chat row and the prior messages in parallel.
+  const [chat, priorMessages] = await Promise.all([
+    getAgentChat(chatId),
+    getAgentChatMessages(chatId),
+  ]);
+  if (!chat) return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
+
+  // Insert the user message + update title/touched_at in parallel. The title
+  // update doubles as the row's updated_at refresh, so we skip the extra touch.
+  const isFirst = priorMessages.length === 0 || chat.title === 'New chat' || !chat.title;
+  await Promise.all([
+    addAgentChatMessage({
+      chatId,
+      role: 'user',
+      content: userMessage,
+      toolCalls: null,
+      createdBy: userEmail,
+      createdByName: userName,
+      createdByImage: userImage,
+    }),
+    isFirst ? updateAgentChatTitle(chatId, makeTitle(userMessage)) : touchAgentChat(chatId),
+  ]);
 
   // Build Gemini history from prior DB messages + the new user message.
   const history: HistoryEntry[] = [];
@@ -513,16 +519,30 @@ export async function POST(req: Request) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let closed = false;
       const send = (event: Record<string, unknown>) => {
+        if (closed) return;
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
+
+      // Heartbeat: SSE comment line every 15s. Keeps Vercel/Cloudflare proxies
+      // from closing the stream during long Gemini turns or tool calls and
+      // also forces a flush so the client's TextDecoder yields something.
+      const heartbeat = setInterval(() => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`: ping\n\n`));
+        } catch {
+          /* controller might be detached */
+        }
+      }, 15000);
 
       const toolCallLog: ToolCallLog[] = [];
       let assistantText = '';
 
       try {
         let steps = 0;
-        const MAX_STEPS = 25;
+        const MAX_STEPS = 12;
 
         while (steps < MAX_STEPS) {
           steps += 1;
@@ -584,10 +604,20 @@ export async function POST(req: Request) {
           // Echo the model turn back verbatim.
           history.push({ role: 'model', parts: turnParts });
 
-          const responseParts: Part[] = [];
+          // Announce every call up-front, then run them in parallel. Gemini
+          // frequently emits 2-4 calls per turn (e.g. describe_table for a
+          // handful of tables); running them sequentially was the single
+          // biggest source of wall-clock latency.
           for (const call of callsThisTurn) {
             send({ type: 'tool_call', name: call.name, args: call.args });
-            const toolResult = await executeTool(call.name, call.args);
+          }
+          const results = await Promise.all(
+            callsThisTurn.map((call) => executeTool(call.name, call.args)),
+          );
+          const responseParts: Part[] = [];
+          for (let i = 0; i < callsThisTurn.length; i++) {
+            const call = callsThisTurn[i];
+            const toolResult = results[i];
             const summary = summarizeForStream(toolResult);
             send({ type: 'tool_result', name: call.name, result: summary });
             toolCallLog.push({ name: call.name, args: call.args, result: summary });
@@ -603,40 +633,53 @@ export async function POST(req: Request) {
           }
         }
 
-        // Persist final assistant message (with tool-call log).
-        await addAgentChatMessage({
-          chatId,
-          role: 'assistant',
-          content: assistantText,
-          toolCalls: toolCallLog.length ? toolCallLog : null,
-          createdBy: null,
-          createdByName: null,
-          createdByImage: null,
-        });
-        await touchAgentChat(chatId);
+        // Persist final assistant message (with tool-call log) in parallel
+        // with the chat's updated_at refresh.
+        await Promise.all([
+          addAgentChatMessage({
+            chatId,
+            role: 'assistant',
+            content: assistantText,
+            toolCalls: toolCallLog.length ? toolCallLog : null,
+            createdBy: null,
+            createdByName: null,
+            createdByImage: null,
+          }),
+          touchAgentChat(chatId),
+        ]);
 
         send({ type: 'done' });
+        clearInterval(heartbeat);
+        closed = true;
         controller.close();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // Persist whatever we got so the user isn't left with an invisible failure.
         try {
-          await addAgentChatMessage({
-            chatId,
-            role: 'assistant',
-            content: assistantText || `_(error: ${message})_`,
-            toolCalls: toolCallLog.length ? toolCallLog : null,
-            createdBy: null,
-            createdByName: null,
-            createdByImage: null,
-          });
-          await touchAgentChat(chatId);
+          await Promise.all([
+            addAgentChatMessage({
+              chatId,
+              role: 'assistant',
+              content: assistantText || `_(error: ${message})_`,
+              toolCalls: toolCallLog.length ? toolCallLog : null,
+              createdBy: null,
+              createdByName: null,
+              createdByImage: null,
+            }),
+            touchAgentChat(chatId),
+          ]);
         } catch {
           /* swallow — primary error already reported */
         }
         send({ type: 'error', message });
+        clearInterval(heartbeat);
+        closed = true;
         controller.close();
       }
+    },
+    cancel() {
+      // Client disconnected — the heartbeat closure captures the interval handle
+      // via the start() scope; nothing to clean up here beyond the controller.
     },
   });
 
@@ -645,6 +688,9 @@ export async function POST(req: Request) {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
+      // Disables proxy buffering (Nginx, some Vercel edge configs). Without
+      // this the client may not see any bytes until the stream ends.
+      'X-Accel-Buffering': 'no',
     },
   });
 }
