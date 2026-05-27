@@ -40,10 +40,13 @@ function formatNum(n: number): string {
 
 type SortField = 'views' | 'likes' | 'comments' | 'engagement' | 'date';
 
+type RunnableFilter = 'all' | 'runable' | 'non-runable';
+
 export default function LateContentTable({ posts, accounts }: Props) {
   const [search, setSearch] = useState('');
   const [platformFilter, setPlatformFilter] = useState('');
   const [accountFilter, setAccountFilter] = useState('');
+  const [runnableFilter, setRunnableFilter] = useState<RunnableFilter>('all');
   const [sortField, setSortField] = useState<SortField>('views');
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [secondarySort, setSecondarySort] = useState<SortField | ''>('');
@@ -76,6 +79,11 @@ export default function LateContentTable({ posts, accounts }: Props) {
     if (accountFilter) {
       result = result.filter(p => (p.platforms || []).some(pl => pl.accountUsername === accountFilter));
     }
+    if (runnableFilter === 'runable') {
+      result = result.filter(p => !!getRunableIntegrationValueByName(p.variableValues));
+    } else if (runnableFilter === 'non-runable') {
+      result = result.filter(p => !getRunableIntegrationValueByName(p.variableValues));
+    }
     result = [...result].sort((a, b) => {
       const av = getSortValue(a, sortField);
       const bv = getSortValue(b, sortField);
@@ -88,7 +96,7 @@ export default function LateContentTable({ posts, accounts }: Props) {
       return diff;
     });
     return result;
-  }, [posts, search, platformFilter, accountFilter, sortField, sortDir, secondarySort]);
+  }, [posts, search, platformFilter, accountFilter, runnableFilter, sortField, sortDir, secondarySort]);
 
   const totalPages = Math.ceil(filtered.length / perPage);
   const paginated = filtered.slice((page - 1) * perPage, page * perPage);
@@ -109,6 +117,25 @@ export default function LateContentTable({ posts, accounts }: Props) {
             onChange={e => { setSearch(e.target.value); setPage(1); }}
             className="pl-9 pr-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] w-60"
           />
+        </div>
+        <div className="flex items-center rounded-lg border border-[var(--border)] overflow-hidden shrink-0">
+          {(['all', 'runable', 'non-runable'] as const).map((opt) => (
+            <button
+              key={opt}
+              onClick={() => { setRunnableFilter(opt); setPage(1); }}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors border-r border-[var(--border)] last:border-r-0 ${
+                runnableFilter === opt
+                  ? opt === 'runable'
+                    ? 'bg-emerald-600 text-white'
+                    : opt === 'non-runable'
+                    ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
+                    : 'bg-[var(--primary)] text-white'
+                  : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+              }`}
+            >
+              {opt === 'all' ? 'All' : opt === 'runable' ? 'Runable' : 'Non-Runable'}
+            </button>
+          ))}
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <select className={selectClass} style={chevronStyle} value={platformFilter} onChange={e => { setPlatformFilter(e.target.value); setPage(1); }}>
