@@ -6,7 +6,7 @@ import { createGenerationRequest } from '@/lib/db-generation-requests';
 import { getEndpointCost } from '@/lib/fal-pricing';
 import { uploadVideoFromPath, downloadToBuffer as gcsDownloadToBuffer } from '@/lib/storage';
 import { downloadFile, getVideoDuration, trimVideo, trimVideoRange } from '@/lib/serverUtils';
-import { addTextOverlay, mixAudio, concatVideos, stripAudio } from '@/lib/ffmpegOps';
+import { addTextOverlay, mixAudio, concatVideos, stripAudio, ensurePortraitRatio } from '@/lib/ffmpegOps';
 import { composeMedia } from '@/lib/ffmpegCompose';
 import { config, getFalWebhookUrl } from '@/lib/config';
 import { getVideoDownloadUrl } from '@/lib/processJob';
@@ -352,7 +352,7 @@ export async function processStep(
           input: {
             image_url: falImageUrl,
             prompt: cfg.prompt || config.veoPrompt,
-            aspect_ratio: (cfg.aspectRatio || veo.aspectRatio) as '9:16' | '16:9' | 'auto',
+            aspect_ratio: (cfg.aspectRatio || veo.aspectRatio || '9:16') as '9:16' | '16:9' | 'auto',
             duration: (cfg.duration || veo.duration) as '4s' | '6s' | '8s',
             resolution: (cfg.resolution || veo.resolution) as '720p' | '1080p',
             generate_audio: cfg.generateAudio ?? veo.generateAudio,
@@ -377,6 +377,7 @@ export async function processStep(
         const videoUrl = videoData.url;
         const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${jobId}-${Date.now()}.mp4`);
         await withExternalRetry(`download Veo output for ${jobId}`, () => downloadFile(videoUrl, outputPath));
+        ensurePortraitRatio(outputPath);
         if (cfg.generateAudio === false) {
           const silentPath = path.join(tempDir, `tpl-step-${stepIndex}-silent-${jobId}-${Date.now()}.mp4`);
           stripAudio(outputPath, silentPath);
@@ -436,6 +437,7 @@ export async function processStep(
         const videoUrl = videoData.url;
         const outputPath = path.join(tempDir, `tpl-step-${stepIndex}-${jobId}-${Date.now()}.mp4`);
         await withExternalRetry(`download motion-control output for ${jobId}`, () => downloadFile(videoUrl, outputPath));
+        ensurePortraitRatio(outputPath);
 
         // Track video generation cost
         try {

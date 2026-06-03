@@ -15,6 +15,7 @@ import { config } from '@/lib/config';
 import { uploadVideoFromPath } from '@/lib/storage';
 import { downloadFile } from '@/lib/serverUtils';
 import { getStepLabel, processTemplateJob, triggerTemplateJobProcessing } from '@/lib/processTemplateJob';
+import { ensurePortraitRatio } from '@/lib/ffmpegOps';
 import { canFinalizeTemplateJobFromPersistedSteps, getFinalTemplateJobOutputUrl } from '@/lib/templateJobFinalization';
 import { cleanupTempWorkspace, createTempWorkspace } from '@/lib/tempWorkspace';
 import type { MiniAppStep } from '@/types';
@@ -119,6 +120,7 @@ async function recoverJob(job: {
       const tempPath = path.join(tempDir, `recover-${job.id}.mp4`);
       try {
         await downloadFile(videoData.url, tempPath);
+        ensurePortraitRatio(tempPath);
         const { filename, url } = await uploadVideoFromPath(tempPath, `result-${job.id}.mp4`);
 
         await createMediaFile({

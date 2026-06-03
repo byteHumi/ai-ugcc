@@ -154,6 +154,7 @@ export type TextOverlayConfig = {
   entireVideo?: boolean;
   startTime?: number;
   duration?: number;
+  safeZonePadding?: number; // px in 720-wide design space (default 80, covers IG right-side action buttons)
 };
 
 export type BgMusicConfig = {

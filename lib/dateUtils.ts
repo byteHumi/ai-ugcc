@@ -68,6 +68,10 @@ export function resolveAnalyticsDateRange(params: {
     };
   }
 
+  if (dateRange === 'today') {
+    return { fromDate: today, toDate: today };
+  }
+
   if (dateRange === 'yesterday') {
     const yesterday = shiftDateKey(today, -1);
     return {

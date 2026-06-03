@@ -132,9 +132,18 @@ function parseColor(hex: string): { r: number; g: number; b: number; alpha: numb
 }
 /**
  * Escape a string for Pango markup.
+ * U+FE0F (VARIATION SELECTOR-16) is stripped first: it tells Pango to look for
+ * an "emoji Bold" font which doesn't exist in our bundle and causes a fatal
+ * Pango crash. Without it, Pango falls back through fontconfig to system emoji
+ * fonts (Apple Color Emoji on macOS, Noto on Linux) and renders the base glyph.
  */
 function escPango(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return s
+    .replace(/️/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 /**
  * Ensure a raw RGBA buffer + position fits inside a canvas.

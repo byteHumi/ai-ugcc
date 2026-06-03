@@ -18,6 +18,7 @@ import { config } from '@/lib/config';
 import { uploadVideoFromPath } from '@/lib/storage';
 import { downloadFile } from '@/lib/serverUtils';
 import { getStepLabel, processTemplateJob, triggerTemplateJobProcessing } from '@/lib/processTemplateJob';
+import { ensurePortraitRatio } from '@/lib/ffmpegOps';
 import { canFinalizeTemplateJobFromPersistedSteps, getFinalTemplateJobOutputUrl } from '@/lib/templateJobFinalization';
 import { cleanupTempWorkspace, createTempWorkspace } from '@/lib/tempWorkspace';
 import type { MiniAppStep } from '@/types';
@@ -45,6 +46,7 @@ async function handleRegularJob(
   try {
     await updateJob(job.id, { step: 'Downloading result (webhook)...' });
     await downloadFile(videoUrl, tempPath);
+    ensurePortraitRatio(tempPath);
 
     const { filename, url } = await uploadVideoFromPath(tempPath, `result-${job.id}.mp4`);
 
@@ -129,6 +131,7 @@ async function handleTemplateJob(
 
     // Download the FAL result
     await downloadFile(videoUrl, currentVideoPath);
+    ensurePortraitRatio(currentVideoPath);
 
     // Upload to GCS and record the step result
     const { url: stepUrl } = await uploadVideoFromPath(currentVideoPath, `template-${job.id}-step-${job.currentStep}.mp4`);

@@ -1,2 +1,2 @@
 export { addTextOverlay } from './ffmpegTextOverlay';
-export { stripAudio, mixAudio, concatVideos } from './ffmpegMediaOps';
+export { stripAudio, mixAudio, concatVideos, ensurePortraitRatio } from './ffmpegMediaOps';

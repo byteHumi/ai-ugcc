@@ -1,4 +1,5 @@
 import { execFileSync } from 'child_process';
+import fs from 'fs';
 import { getFfmpeg, getFfprobe } from './ffmpegBinaries';
 import type { BgMusicConfig } from '@/types';
 export function stripAudio(inputPath: string, outputPath: string): void {
@@ -165,4 +166,35 @@ export function concatVideos(videoPaths: string[], outputPath: string): void {
     '-shortest',
     outputPath,
   ], { maxBuffer: 50 * 1024 * 1024 });
+}
+
+/**
+ * Ensure the video at videoPath is 9:16 portrait ratio.
+ * If it already is (within 2% tolerance), no-ops. Otherwise re-encodes in-place
+ * using scale+crop to fill 1080x1920 without black bars.
+ */
+export function ensurePortraitRatio(videoPath: string): void {
+  let w = 0, h = 0;
+  try {
+    const probe = execFileSync(getFfprobe(), [
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height',
+      '-of', 'csv=p=0:s=x', videoPath,
+    ], { encoding: 'utf-8' }).trim();
+    [w, h] = probe.split('x').map(Number);
+  } catch {
+    return;
+  }
+  if (!w || !h) return;
+  if (Math.abs(w / h - 9 / 16) < 0.02) return; // already portrait 9:16
+
+  const tmpPath = videoPath + '.portrait.mp4';
+  execFileSync(getFfmpeg(), [
+    '-y', '-i', videoPath,
+    '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1',
+    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+    '-c:a', 'copy',
+    tmpPath,
+  ], { maxBuffer: 50 * 1024 * 1024 });
+  fs.renameSync(tmpPath, videoPath);
 }

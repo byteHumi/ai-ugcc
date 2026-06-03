@@ -88,7 +88,10 @@ type Filters = {
   customFrom?: string;
   customTo?: string;
   groups?: string[];
+  batchId?: string;
 };
+
+type BatchInfo = { id: string; name: string; createdAt: string; status: string };
 
 type RawPostAnalytics = {
   _id?: string;
@@ -174,6 +177,7 @@ export function useLateAnalytics() {
   const [overview, setOverview] = useState(_overviewCache);
   const [accounts, setAccounts] = useState(_accountsCache);
   const [groupAccounts, setGroupAccounts] = useState<GroupAccountMap[]>(_groupAccountsCache);
+  const [batches, setBatches] = useState<BatchInfo[]>([]);
   const [loading, setLoading] = useState(_allPostsCache.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [filters, setFilters] = useState<Filters>({ platform: '', dateRange: '30d', sortBy: 'newest' });
@@ -448,6 +452,15 @@ export function useLateAnalytics() {
       }
     }
 
+    // Batch filter (client-side: filter to posts published on the batch's creation day)
+    if (filters.batchId) {
+      const batch = batches.find((b) => b.id === filters.batchId);
+      if (batch) {
+        const batchDate = getDateKeyInTimeZone(batch.createdAt);
+        result = result.filter((p) => p.publishedAt && getDateKeyInTimeZone(p.publishedAt) === batchDate);
+      }
+    }
+
     // Sort
     const sorted = [...result];
     if (filters.sortBy === 'oldest') {
@@ -464,7 +477,15 @@ export function useLateAnalytics() {
     }
 
     return sorted;
-  }, [allPosts, filters.platform, filters.profile, filters.groups, filters.sortBy, getDateRange, groupAccounts]);
+  }, [allPosts, filters.platform, filters.profile, filters.groups, filters.sortBy, filters.batchId, getDateRange, groupAccounts, batches]);
+
+  // Load pipeline batches for batch-wise filtering
+  useEffect(() => {
+    fetch('/api/pipeline-batches')
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => { if (Array.isArray(data)) setBatches(data); })
+      .catch(() => {});
+  }, []);
 
   // Load group accounts
   useEffect(() => {
@@ -521,6 +542,7 @@ export function useLateAnalytics() {
     overview,
     accounts,
     groupAccounts,
+    batches,
     loading,
     refreshing,
     filters,

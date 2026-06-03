@@ -78,6 +78,10 @@ export function wrapTextForOverlay(
   fontSize: number,
   designWidth = TEXT_OVERLAY_DESIGN_WIDTH,
 ): string {
+  // Strip variation selectors (U+FE0F, U+FE0E) before width estimation so they
+  // don't inflate the character count (they have zero visual width).
+  const normalized = raw.replace(/[︎️]/g, '');
+
   const wpl = wordsPerLine ?? 0;
   if (wpl > 0) {
     return wrapByWordCount(raw, wpl);
@@ -86,7 +90,7 @@ export function wrapTextForOverlay(
   const effectiveLeft = paddingLeft > 0 ? paddingLeft : DEFAULT_TEXT_OVERLAY_MARGIN;
   const effectiveRight = paddingRight > 0 ? paddingRight : DEFAULT_TEXT_OVERLAY_MARGIN;
   const availableWidth = designWidth - effectiveLeft - effectiveRight;
-  const charWidth = containsCjkGlyphs(raw) ? fontSize : fontSize * 0.55;
+  const charWidth = containsCjkGlyphs(normalized) ? fontSize : fontSize * 0.55;
   const maxChars = Math.max(5, Math.floor(availableWidth / charWidth));
   return wrapTextToWidth(raw, maxChars);
 }

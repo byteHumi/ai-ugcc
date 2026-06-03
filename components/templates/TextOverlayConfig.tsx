@@ -234,6 +234,28 @@ export default function TextOverlayConfig({
             </div>
           )}
 
+          {/* Safe zone padding */}
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="text-[11px] font-medium text-[var(--text)]">Safe Zone Padding</label>
+              <span className="rounded bg-[var(--accent)] px-1.5 py-0.5 text-[11px] tabular-nums font-medium text-[var(--text)]">
+                {config.safeZonePadding ?? 80}px
+              </span>
+            </div>
+            <input
+              type="range" min={0} max={200} step={5}
+              value={config.safeZonePadding ?? 80}
+              onChange={(e) => onChange({ ...config, safeZonePadding: parseInt(e.target.value) })}
+              className="w-full" style={{ accentColor: 'var(--primary)' }}
+            />
+            <div className="mt-0.5 flex justify-between text-[10px] text-[var(--text-muted)]">
+              <span>None</span><span>200px</span>
+            </div>
+            <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+              Keeps text within IG Reels safe area. Default 80px covers side action buttons.
+            </p>
+          </div>
+
           {/* Horizontal padding — controls text width / line wrapping */}
           <div className="space-y-2.5">
             <div className="flex items-center gap-2">

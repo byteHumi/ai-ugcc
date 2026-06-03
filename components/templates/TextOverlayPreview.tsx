@@ -9,6 +9,7 @@ import {
 } from '@/lib/textOverlayLayout';
 
 const VIDEO_WIDTH = TEXT_OVERLAY_DESIGN_WIDTH;
+const VIDEO_HEIGHT = VIDEO_WIDTH * (16 / 9); // 1280px design space
 
 export default function TextOverlayPreview({
   config,
@@ -45,6 +46,9 @@ export default function TextOverlayPreview({
 
   // Scale factor: 1 video-pixel → `scale` preview-pixels
   const scale = containerWidth > 0 ? containerWidth / VIDEO_WIDTH : 0.27;
+
+  // Safe zone offset in preview pixels (default 80px design-space = IG Reels safe area)
+  const safeZonePx = (config.safeZonePadding ?? 80) * scale;
 
   useEffect(() => {
     if (videoUrl) return;
@@ -152,6 +156,15 @@ export default function TextOverlayPreview({
       base.borderRadius = `${Math.round(4 * scale)}px`;
     }
 
+    // Invisible text box: cap width so text never overflows its allocated area
+    const textBoxWidth = config.position === 'custom'
+      ? Math.max(0, containerWidth - 2 * safeZonePx)
+      : Math.max(0, containerWidth - effectiveLeft - effectiveRight);
+    if (textBoxWidth > 0) {
+      base.maxWidth = `${textBoxWidth}px`;
+      base.overflow = 'hidden';
+    }
+
     /* ── Custom position ── */
     if (config.position === 'custom') {
       base.position = 'absolute';
@@ -193,7 +206,7 @@ export default function TextOverlayPreview({
     } else {
       switch (config.position) {
         case 'top':
-          base.top = '12%';
+          base.top = `${safeZonePx}px`;
           base.transform = xTx || undefined;
           break;
         case 'center':
@@ -201,7 +214,7 @@ export default function TextOverlayPreview({
           base.transform = [xTx, 'translateY(-50%)'].filter(Boolean).join(' ') || undefined;
           break;
         case 'bottom':
-          base.bottom = '12%';
+          base.bottom = `${safeZonePx}px`;
           base.transform = xTx || undefined;
           break;
       }
@@ -234,7 +247,7 @@ export default function TextOverlayPreview({
     }
     if (!isDragging || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const y = Math.max(20, Math.min(e.clientY - rect.top, rect.height - 20));
+    const y = Math.max(safeZonePx, Math.min(e.clientY - rect.top, rect.height - safeZonePx));
     setDragY(y);
     setContainerHeight(rect.height);
   };
@@ -266,8 +279,10 @@ export default function TextOverlayPreview({
   const updateCustomPos = (e: React.PointerEvent) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const x = Math.max(5, Math.min(95, ((e.clientX - rect.left) / rect.width) * 100));
-    const y = Math.max(5, Math.min(95, ((e.clientY - rect.top) / rect.height) * 100));
+    const safeXPct = (safeZonePx / rect.width) * 100;
+    const safeYPct = (safeZonePx / rect.height) * 100;
+    const x = Math.max(safeXPct, Math.min(100 - safeXPct, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(safeYPct, Math.min(100 - safeYPct, ((e.clientY - rect.top) / rect.height) * 100));
     onChange({ ...config, customX: Math.round(x), customY: Math.round(y) });
   };
 
@@ -314,6 +329,12 @@ export default function TextOverlayPreview({
           </div>
         )}
 
+        {/* Safe zone boundary (invisible border, always shown) */}
+        <div
+          className="absolute pointer-events-none border border-dashed border-white/20 rounded-sm"
+          style={{ inset: `${safeZonePx}px` }}
+        />
+
         {/* Drop zone indicators */}
         {isDragging && config.position !== 'custom' && (
           <>
@@ -357,10 +378,10 @@ export default function TextOverlayPreview({
             className="absolute left-1/2 -translate-x-1/2 rounded border border-dashed border-white/30 px-6 py-1"
             style={
               config.position === 'top'
-                ? { top: '12%' }
+                ? { top: `${safeZonePx}px` }
                 : config.position === 'center'
                   ? { top: '50%', transform: 'translateX(-50%) translateY(-50%)' }
-                  : { bottom: '12%' }
+                  : { bottom: `${safeZonePx}px` }
             }
           >
             <span className="text-[10px] text-white/40">Text here</span>

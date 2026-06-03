@@ -279,6 +279,7 @@ function LateAnalyticsContent() {
     contentDecay,
     accounts,
     groupAccounts,
+    batches,
     loading,
     refreshing,
     filters,
@@ -424,7 +425,7 @@ function LateAnalyticsContent() {
 
   return (
     <PageTransition className="space-y-6">
-      <LateAnalyticsFilters filters={filters} setFilters={setFilters} lastSync={lastSync} onRefresh={refresh} onDownload={handleDownload} accounts={accounts} groupAccounts={groupAccounts} />
+      <LateAnalyticsFilters filters={filters} setFilters={setFilters} lastSync={lastSync} onRefresh={refresh} onDownload={handleDownload} accounts={accounts} groupAccounts={groupAccounts} batches={batches} />
 
       {refreshing && (
         <div className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-xs text-[var(--text-muted)]">

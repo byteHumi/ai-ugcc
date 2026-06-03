@@ -2,12 +2,24 @@
 import { useState, useRef, useEffect } from 'react';
 import { Download, RefreshCw, Clock, X } from 'lucide-react';
 
-type Filters = { platform: string; dateRange: string; sortBy: string; profile?: string; customFrom?: string; customTo?: string; groups?: string[] };
+type Filters = { platform: string; dateRange: string; sortBy: string; profile?: string; customFrom?: string; customTo?: string; groups?: string[]; batchId?: string };
 type Account = { id: string; platform: string; username: string; displayName?: string };
 type GroupAccountMap = { name: string; accountIds: string[] };
+type BatchInfo = { id: string; name: string; createdAt: string; status: string };
+
+function toLocalDateKey(iso: string): string {
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getTodayKey() { return toLocalDateKey(new Date().toISOString()); }
+function getYesterdayKey() { return toLocalDateKey(new Date(Date.now() - 86_400_000).toISOString()); }
 
 export default function LateAnalyticsFilters({
-  filters, setFilters, lastSync, onRefresh, onDownload, accounts = [], groupAccounts = []
+  filters, setFilters, lastSync, onRefresh, onDownload, accounts = [], groupAccounts = [], batches = []
 }: {
   filters: Filters;
   setFilters: (f: Filters) => void;
@@ -16,6 +28,7 @@ export default function LateAnalyticsFilters({
   onDownload?: () => void;
   accounts?: Account[];
   groupAccounts?: GroupAccountMap[];
+  batches?: BatchInfo[];
 }) {
   const selectClass = "appearance-none rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-2 pr-8 text-sm font-medium text-[var(--text-primary)] outline-none cursor-pointer hover:border-[var(--primary)] transition-colors bg-[length:16px] bg-[right_8px_center] bg-no-repeat";
   const chevronStyle = { backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")` };
@@ -26,6 +39,29 @@ export default function LateAnalyticsFilters({
   );
 
   const selectedGroups = filters.groups || [];
+
+  // Batch-wise: show selector only on day-level views
+  const isDayView = filters.dateRange === 'today' || filters.dateRange === 'yesterday';
+  const selectedDayKey = filters.dateRange === 'today' ? getTodayKey() : filters.dateRange === 'yesterday' ? getYesterdayKey() : null;
+  const dayBatches = selectedDayKey
+    ? batches.filter((b) => toLocalDateKey(b.createdAt) === selectedDayKey)
+    : batches;
+  const [batchDropdownOpen, setBatchDropdownOpen] = useState(false);
+  const batchDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (batchDropdownRef.current && !batchDropdownRef.current.contains(e.target as Node)) {
+        setBatchDropdownOpen(false);
+      }
+    }
+    if (batchDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [batchDropdownOpen]);
+
+  const selectedBatch = batches.find((b) => b.id === filters.batchId);
   const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
   const groupDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -144,7 +180,8 @@ export default function LateAnalyticsFilters({
           </div>
         )}
 
-        <select className={selectClass} style={chevronStyle} value={filters.dateRange} onChange={e => setFilters({ ...filters, dateRange: e.target.value })}>
+        <select className={selectClass} style={chevronStyle} value={filters.dateRange} onChange={e => setFilters({ ...filters, dateRange: e.target.value, batchId: undefined })}>
+          <option value="today">Today</option>
           <option value="yesterday">Yesterday</option>
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
@@ -154,6 +191,71 @@ export default function LateAnalyticsFilters({
           <option value="all">All time</option>
           <option value="custom">Custom range</option>
         </select>
+
+        {/* Batch selector — only on day-level views */}
+        {isDayView && (
+          <div className="relative" ref={batchDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setBatchDropdownOpen((o) => !o)}
+              className={`flex items-center gap-2 rounded-lg border bg-[var(--bg-secondary)] px-4 py-2 text-sm font-medium transition-colors hover:border-[var(--primary)] ${
+                filters.batchId ? 'border-[var(--primary)] text-[var(--text-primary)]' : 'border-[var(--border)] text-[var(--text-primary)]'
+              }`}
+            >
+              {filters.batchId && selectedBatch ? (
+                <span className="max-w-[140px] truncate">{selectedBatch.name || `Batch ${selectedBatch.id.slice(0, 6)}`}</span>
+              ) : (
+                <span>All batches</span>
+              )}
+              {filters.batchId ? (
+                <span
+                  role="button"
+                  onClick={(e) => { e.stopPropagation(); setFilters({ ...filters, batchId: undefined }); }}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-[var(--bg-tertiary)]"
+                >
+                  <X className="h-3 w-3" />
+                </span>
+              ) : (
+                <svg className={`h-4 w-4 text-[var(--text-muted)] transition-transform ${batchDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              )}
+            </button>
+
+            {batchDropdownOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-lg">
+                <div className="max-h-64 overflow-y-auto py-1">
+                  <button
+                    type="button"
+                    onClick={() => { setFilters({ ...filters, batchId: undefined }); setBatchDropdownOpen(false); }}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-[var(--bg-tertiary)] ${!filters.batchId ? 'font-semibold text-[var(--primary)]' : 'text-[var(--text-primary)]'}`}
+                  >
+                    All batches
+                  </button>
+                  {dayBatches.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-[var(--text-muted)]">No batches for this day</div>
+                  ) : (
+                    dayBatches.map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => { setFilters({ ...filters, batchId: b.id }); setBatchDropdownOpen(false); }}
+                        className={`w-full px-3 py-2 text-left hover:bg-[var(--bg-tertiary)] ${filters.batchId === b.id ? 'bg-[var(--primary)]/5' : ''}`}
+                      >
+                        <div className={`text-sm font-medium ${filters.batchId === b.id ? 'text-[var(--primary)]' : 'text-[var(--text-primary)]'}`}>
+                          {b.name || `Batch ${b.id.slice(0, 8)}`}
+                        </div>
+                        <div className="text-[10px] text-[var(--text-muted)]">
+                          {new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {b.status}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {filters.dateRange === 'custom' && (
           <>
