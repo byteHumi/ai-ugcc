@@ -1,5 +1,10 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
+
+// TEMPORARY: shared password login while Google sign-in is disabled.
+// Remove this (and the Credentials provider below) when Google auth is restored.
+const TEMP_ACCESS_PASSWORD = "runfast1@today";
 
 // Always-allowed emails, regardless of the ALLOWED_EMAILS env var.
 const hardcodedAllowedEmails = [
@@ -22,13 +27,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
+    Credentials({
+      id: "temp-password",
+      name: "Access password",
+      credentials: { password: { label: "Password", type: "password" } },
+      authorize(credentials) {
+        if (credentials?.password === TEMP_ACCESS_PASSWORD) {
+          return { id: "temp-user", name: "Team", email: "team@runable.com" };
+        }
+        return null;
+      },
+    }),
   ],
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
   },
   callbacks: {
-    signIn({ user }) {
+    signIn({ user, account }) {
+      // Temp password login bypasses the email allowlist entirely.
+      if (account?.provider === "temp-password") return true;
       if (envAllowedEmails.length === 0) return true; // no env allowlist = allow all
       const email = user.email?.toLowerCase();
       if (email && allowedEmails.includes(email)) return true;

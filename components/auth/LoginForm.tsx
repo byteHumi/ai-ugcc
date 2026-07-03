@@ -1,12 +1,33 @@
 'use client';
 
 import { signIn } from 'next-auth/react';
-import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
 
 function LoginFormInner() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const callbackUrl = searchParams.get('callbackUrl') ?? '/templates';
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    const res = await signIn('temp-password', {
+      password,
+      redirect: false,
+    });
+    setLoading(false);
+    if (res?.error) {
+      setError('Incorrect password');
+    } else {
+      router.push(callbackUrl);
+      router.refresh();
+    }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[var(--bg-primary)]">
@@ -21,10 +42,32 @@ function LoginFormInner() {
             </span>
           </h1>
           <p className="mt-3 text-sm text-[var(--text-secondary)]">
-            Sign in to continue
+            Enter the access password to continue
           </p>
         </div>
 
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Access password"
+            autoFocus
+            className="w-full rounded-lg border border-[var(--border-primary)] bg-[var(--bg-primary)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)]"
+          />
+          {error && (
+            <p className="text-sm text-red-500">{error}</p>
+          )}
+          <button
+            type="submit"
+            disabled={loading || !password}
+            className="w-full rounded-lg bg-[var(--primary)] px-4 py-3 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+
+        {/* TEMPORARY: Google sign-in disabled — restore this button when re-enabling Google auth.
         <button
           onClick={() => signIn('google', { callbackUrl })}
           className="flex w-full items-center justify-center gap-3 rounded-lg border border-[var(--border-primary)] bg-[var(--bg-primary)] px-4 py-3 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-tertiary)]"
@@ -49,6 +92,7 @@ function LoginFormInner() {
           </svg>
           Continue with Google
         </button>
+        */}
       </div>
     </div>
   );
