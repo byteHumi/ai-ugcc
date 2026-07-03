@@ -1,10 +1,20 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-const allowedEmails = (process.env.ALLOWED_EMAILS ?? "")
+// Always-allowed emails, regardless of the ALLOWED_EMAILS env var.
+const hardcodedAllowedEmails = [
+  "ujjwalkrai@gmail.com",
+  "suryansh@runable.com",
+  "humi@runable.com",
+  "umesh@runable.com",
+];
+
+const envAllowedEmails = (process.env.ALLOWED_EMAILS ?? "")
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
+
+const allowedEmails = [...hardcodedAllowedEmails, ...envAllowedEmails];
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -19,7 +29,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   callbacks: {
     signIn({ user }) {
-      if (allowedEmails.length === 0) return true; // no allowlist = allow all
+      if (envAllowedEmails.length === 0) return true; // no env allowlist = allow all
       const email = user.email?.toLowerCase();
       if (email && allowedEmails.includes(email)) return true;
       return `/access-denied?email=${encodeURIComponent(user.email ?? "")}`;
